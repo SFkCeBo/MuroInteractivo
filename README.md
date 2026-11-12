@@ -53,13 +53,16 @@ PUBLIC_URL=https://algo.trycloudflare.com ADMIN_PIN=2468 npm start
 ## En la presentación
 
 - **Proyector:** abre `/pantalla` en el ordenador conectado al proyector y pulsa F11. O proyecta tu propio `/panel` y usa el botón *Presentar*, que oculta los controles.
-- **Texto encima de una foto:** selecciona la foto y pulsa *Texto*. Escribe directamente; Esc para terminar. Con la barra flotante cambias color, fondo, tamaño, alineación y tipo de letra. La esquina del texto lo escala.
+- **El muro ocupa toda la pantalla**, en cualquier proporción (16:9, 16:10, 4:3), sin bandas negras. La zona central de 1920×1080 se ve siempre entera en todas las pantallas; *Cuadrícula*, *Collage* y *Ampliar* colocan las cosas dentro de ella.
+- **Mover y agrandar fotos:** arrástralas (lo que tocas pasa al frente). Para cambiar el tamaño: la esquina inferior derecha, los botones **−** / **+** de la barra flotante, **Ctrl + rueda** (o pellizco en el trackpad) o **Ampliar**, que la pone a toda pantalla. *Reducir* la devuelve a su sitio.
+- **Texto encima de una foto:** selecciona la foto y pulsa *Texto*. El texto queda **anclado**: se mueve, gira y crece con la foto. También puedes arrastrar cualquier texto sobre una foto (se marca con un recuadro naranja) para anclarlo, o sacarlo fuera o pulsar *Soltar* para que vuelva a ir por libre. Si borras la foto, se borran sus textos.
+- **Cambiar o borrar un texto:** doble clic sobre él (o *Editar* en la barra flotante) y escribe; Esc para terminar. *Eliminar* o Supr lo borra, y si lo dejas vacío también se borra. La barra flotante cambia color, fondo, tamaño, alineación y tipo de letra.
 - **Editar foto:** doble clic → *Editar* (o botón *Editar* de la barra flotante): estilos rápidos, brillo, contraste, saturación, calidez, B/N, sepia, tono, desenfoque, girar, voltear y recortar (libre, 1:1, 4:3, 16:9, 4:5). El original se conserva y puedes volver a él.
 - **Destacar:** doble clic en una foto abre el visor; *Destacar en pantalla* la muestra a pantalla completa en `/pantalla`. Con ← → pasas a la siguiente y el proyector la sigue.
 - **Moderar:** con *Moderar* activado, lo que llega espera en la pestaña *Pendiente* hasta que lo apruebes.
 - **Ocultar** (ojo) quita algo del proyector sin borrarlo; en tu panel queda semitransparente.
 - **Cuadrícula / Collage** ordenan todo de golpe. *Subidas* abre o cierra la recepción.
-- Atajos: Supr borra, flechas mueven (Mayús = más), Mayús + esquina cambia el tamaño sin mantener la proporción, Mayús al girar ajusta de 15 en 15°.
+- Atajos: Supr borra, flechas mueven (Mayús = más), Ctrl + rueda cambia el tamaño, Mayús + esquina cambia el tamaño sin mantener la proporción, Mayús al girar ajusta de 15 en 15°.
 
 ## Datos y límites
 

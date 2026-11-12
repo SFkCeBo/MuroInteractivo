@@ -79,6 +79,18 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const str = (v, max) => String(v ?? '').slice(0, max);
 
+// Los textos anclados a una foto guardan su posición relativa a ella.
+// Si la foto cambia de tamaño, sus textos se escalan con ella.
+function scaleChildren(parentId, k) {
+  if (!Number.isFinite(k) || k <= 0 || Math.abs(k - 1) < 1e-6) return;
+  for (const c of state.elements) {
+    if (c.parent !== parentId) continue;
+    c.x = Math.round(c.x * k * 10) / 10; c.y = Math.round(c.y * k * 10) / 10;
+    c.w = clamp(Math.round(c.w * k), 30, 4000);
+    if (c.style) c.style.size = clamp(Math.round((c.style.size || 48) * k * 10) / 10, 6, 400);
+  }
+}
+
 function publicState() {
   return {
     settings: state.settings,
@@ -271,6 +283,11 @@ io.on('connection', (socket) => {
   socket.on('update', ({ id, patch } = {}) => {
     const el = find(id);
     if (!el || !patch || typeof patch !== 'object') return;
+    const oldW = el.w;
+    if (el.kind === 'text' && 'parent' in patch) {
+      const p = patch.parent && find(patch.parent);
+      el.parent = p && p.kind !== 'text' ? p.id : null;
+    }
     if ('x' in patch) el.x = clamp(num(patch.x, el.x), -2000, BOARD_W + 2000);
     if ('y' in patch) el.y = clamp(num(patch.y, el.y), -2000, BOARD_H + 2000);
     if ('w' in patch) el.w = clamp(num(patch.w, el.w), 30, 4000);
@@ -280,6 +297,7 @@ io.on('connection', (socket) => {
     if ('status' in patch && ['live', 'pending'].includes(patch.status)) el.status = patch.status;
     if ('showCaption' in patch) el.showCaption = Boolean(patch.showCaption);
     if ('message' in patch) el.message = str(patch.message, 280);
+    if (el.kind !== 'text' && el.w !== oldW) scaleChildren(el.id, el.w / oldW);
     if ('playing' in patch) el.playing = Boolean(patch.playing);
     if ('muted' in patch) el.muted = Boolean(patch.muted);
     if (el.kind === 'text') {
@@ -307,13 +325,20 @@ io.on('connection', (socket) => {
   socket.on('add-text', (opts, ack) => {
     opts = opts && typeof opts === 'object' ? opts : {};
     const id = newId();
-    state.elements.push({
-      id, kind: 'text', createdAt: Date.now(), status: 'live', hidden: false,
-      x: clamp(num(opts.x, 660), -500, BOARD_W), y: clamp(num(opts.y, 470), -500, BOARD_H),
-      w: 600, h: 140, rot: 0, z: maxZ() + 1,
-      text: str(opts.text || 'Escribe aquí', 2000),
-      style: { color: '#ffffff', bg: 'rgba(0,0,0,0.55)', size: 64, bold: true, align: 'center', font: 'sans' },
-    });
+    const p = opts.parent && find(opts.parent);
+    const base = { id, kind: 'text', createdAt: Date.now(), status: 'live', hidden: false, h: 140, rot: 0,
+      text: str(opts.text || 'Escribe aquí', 2000) };
+    if (p && p.kind !== 'text') {
+      // Texto anclado: coordenadas relativas a la foto
+      const w = Math.round(Math.min(600, p.w * 0.9));
+      const size = Math.round(clamp(p.w / 9, 16, 64));
+      state.elements.push({ ...base, parent: p.id, w, x: Math.round((p.w - w) / 2), y: Math.round(p.h * 0.62), z: 1,
+        style: { color: '#ffffff', bg: 'rgba(0,0,0,0.55)', size, bold: true, align: 'center', font: 'sans' } });
+    } else {
+      state.elements.push({ ...base, parent: null, w: 600, z: maxZ() + 1,
+        x: clamp(num(opts.x, 660), -2000, BOARD_W + 2000), y: clamp(num(opts.y, 470), -2000, BOARD_H + 2000),
+        style: { color: '#ffffff', bg: 'rgba(0,0,0,0.55)', size: 64, bold: true, align: 'center', font: 'sans' } });
+    }
     broadcast();
     if (typeof ack === 'function') ack(id);
   });
@@ -322,6 +347,7 @@ io.on('connection', (socket) => {
     const i = state.elements.findIndex((e) => e.id === id);
     if (i < 0) return;
     const [el] = state.elements.splice(i, 1);
+    state.elements = state.elements.filter((c) => c.parent !== el.id); // sus textos se van con ella
     if (el.file) for (const u of new Set([el.file.url, el.file.originalUrl])) fs.unlink(path.join(UPLOAD_DIR, path.basename(u)), () => {});
     broadcast();
   });
@@ -338,8 +364,10 @@ io.on('connection', (socket) => {
     if (!Array.isArray(positions)) return;
     for (const p of positions.slice(0, 2000)) {
       const el = find(p && p.id); if (!el) continue;
+      const oldW = el.w;
       el.x = num(p.x, el.x); el.y = num(p.y, el.y); el.w = clamp(num(p.w, el.w), 30, 4000);
       el.h = clamp(num(p.h, el.h), 20, 4000); el.rot = clamp(num(p.rot, 0), -360, 360);
+      if (el.kind !== 'text') scaleChildren(el.id, el.w / oldW);
     }
     broadcast();
   });

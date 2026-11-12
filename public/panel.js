@@ -4,7 +4,9 @@
   document.body.classList.add('mode-' + MODE);
   const BW = 1920, BH = 1080;
   const $ = (s, r = document) => r.querySelector(s);
-  const board = $('#board'), wrap = $('#stageWrap');
+  const board = $('#board'), wrap = $('#stageWrap'), space = $('#space');
+  // El área de referencia (1920×1080) siempre se ve entera; el tablero se estira para llenar el resto de la pantalla.
+  const view = { w: BW, h: BH, ox: 0, oy: 0 };
 
   let state = { settings: {}, elements: [] };
   let socket = null, pin = null, scale = 1, initialized = false;
@@ -47,6 +49,8 @@
     alignC: P('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
     alignR: P('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
     minus: P('<path d="M5 12h14"/>'),
+    shrink: P('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'),
+    unlink: P('<path d="M9 15l-1.5 1.5a3.5 3.5 0 0 1-5-5L5 9M15 9l1.5-1.5a3.5 3.5 0 0 1 5 5L19 15M8 2v3M2 8h3M16 22v-3M22 16h-3"/>'),
     plus: P('<path d="M12 5v14M5 12h14"/>'),
     pdf: P('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M8.5 16.5v-4h1.2a1.2 1.2 0 0 1 0 2.4H8.5M12.5 16.5v-4h1a2 2 0 0 1 0 4zM17 12.5h-1.5v4M15.5 14.5h1.2"/>'),
     doc: P('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
@@ -129,15 +133,35 @@
     for (const [id, patch] of pending) socket && socket.emit('update', { id, patch });
     pending.clear();
   }
-  function update(id, patch) { const el = getEl(id); if (el) Object.assign(el, patch); queue(id, patch); flush(); render(); }
+  function update(id, patch) {
+    const el = getEl(id);
+    if (el) { if (patch.w && el.kind !== 'text' && el.w) scaleChildren(el.id, patch.w / el.w); Object.assign(el, patch); }
+    queue(id, patch); flush(); render();
+  }
+  // Igual que en el servidor: los textos anclados crecen y encogen con su foto
+  function scaleChildren(parentId, k) {
+    if (!Number.isFinite(k) || k <= 0 || Math.abs(k - 1) < 1e-6) return;
+    for (const c of state.elements) {
+      if (c.parent !== parentId) continue;
+      c.x = Math.round(c.x * k * 10) / 10; c.y = Math.round(c.y * k * 10) / 10;
+      c.w = Math.min(4000, Math.max(30, Math.round(c.w * k)));
+      if (c.style) c.style = { ...c.style, size: Math.min(400, Math.max(6, Math.round((c.style.size || 48) * k * 10) / 10)) };
+      const n = nodes.get(c.id); if (n) updateNode(n, c);
+    }
+  }
+  const parentOf = (el) => (el && el.parent ? getEl(el.parent) : null);
+  const frameRot = (el) => { const p = parentOf(el); return p ? (p.rot || 0) : 0; };
 
   // ---------- Escala del tablero ----------
   function fit() {
     const r = wrap.getBoundingClientRect();
-    const pad = MODE === 'admin' && !document.body.classList.contains('presenting') ? 16 : 0;
-    scale = Math.max(0.05, Math.min((r.width - pad * 2) / BW, (r.height - pad * 2) / BH));
-    const x = (r.width - BW * scale) / 2, y = (r.height - BH * scale) / 2;
-    board.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    if (!r.width || !r.height) return;
+    scale = Math.max(0.05, Math.min(r.width / BW, r.height / BH));
+    view.w = r.width / scale; view.h = r.height / scale;
+    view.ox = (view.w - BW) / 2; view.oy = (view.h - BH) / 2;
+    board.style.width = view.w + 'px'; board.style.height = view.h + 'px';
+    board.style.transform = `scale(${scale})`;
+    space.style.left = view.ox + 'px'; space.style.top = view.oy + 'px';
     board.style.setProperty('--inv', String(1 / scale));
     if (MODE === 'admin') renderToolbar(true);
   }
@@ -161,14 +185,30 @@
     const live = state.elements.filter((e) => e.status === 'live' && (MODE === 'admin' || !e.hidden));
     const seen = new Set();
     let arrivals = 0;
-    for (const el of live) {
-      if (action && action.id === el.id && action.geom) Object.assign(el, action.geom);
-      else if (recent && recent.id === el.id && Date.now() < recent.until) Object.assign(el, recent.geom);
+    // Primero fotos y textos sueltos; después los textos anclados, dentro de su foto
+    const roots = live.filter((e) => !e.parent), kids = live.filter((e) => e.parent);
+    for (const el of [...roots, ...kids]) {
+      const local = action && action.id === el.id && action.geom ? action.geom
+        : recent && recent.id === el.id && Date.now() < recent.until ? recent.geom : null;
+      if (local) {
+        if (local.w && el.kind !== 'text' && el.w) {
+          // Ajusta también sus textos (aún vienen del servidor con el tamaño anterior)
+          const k = local.w / el.w;
+          for (const c of state.elements) if (c.parent === el.id) {
+            c.x = Math.round(c.x * k * 10) / 10; c.y = Math.round(c.y * k * 10) / 10; c.w = Math.round(c.w * k);
+            if (c.style) c.style = { ...c.style, size: Math.round((c.style.size || 48) * k * 10) / 10 };
+          }
+        }
+        Object.assign(el, local);
+      }
+      const host = el.parent ? nodes.get(el.parent) : space;
+      if (!host || (el.parent && !seen.has(el.parent))) continue; // su foto no está visible
       let n = nodes.get(el.id);
       if (!n) {
-        n = createNode(el); nodes.set(el.id, n); board.appendChild(n);
+        n = createNode(el); nodes.set(el.id, n);
         if (initialized) { n.classList.add('enter'); setTimeout(() => n.classList.remove('enter'), 700); }
       }
+      if (n.parentNode !== host) host.appendChild(n);
       updateNode(n, el); seen.add(el.id);
     }
     for (const [id, n] of nodes) if (!seen.has(id)) { n.remove(); nodes.delete(id); }
@@ -321,10 +361,11 @@
 
   $('#addText').onclick = () => {
     const sel = selectedId && getEl(selectedId);
-    let x = BW / 2 - 300, y = BH / 2 - 70;
-    if (sel && sel.kind !== 'text') { x = sel.x + sel.w / 2 - 300; y = sel.y + sel.h - 170; }
+    const photo = sel && (sel.kind !== 'text' ? sel : parentOf(sel));
     stopEditing();
-    socket.emit('add-text', { x: Math.round(x), y: Math.round(y) }, (id) => {
+    const opts = photo ? { parent: photo.id } : { x: Math.round(BW / 2 - 300), y: Math.round(BH / 2 - 70) };
+    if (photo) toast('Texto anclado a la foto: se moverá con ella');
+    socket.emit('add-text', opts, (id) => {
       setTimeout(() => { selectedId = id; render(); startEditing(id); }, 30);
     });
   };
@@ -371,7 +412,50 @@
     nodes.forEach((n, nid) => n.classList.toggle('selected', nid === id));
     renderToolbar(); renderSide();
   }
-  function toBoard(e) { const r = board.getBoundingClientRect(); return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; }
+  // Coordenadas de pantalla → coordenadas del muro
+  function toSpaceXY(cx, cy) { const r = space.getBoundingClientRect(); return { x: (cx - r.left) / scale, y: (cy - r.top) / scale }; }
+  const toBoard = (e) => toSpaceXY(e.clientX, e.clientY);
+  function nodeCenter(n) { const r = n.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; }
+  // Foto que hay debajo del centro de un texto (para anclarlo al soltarlo)
+  function photoUnder(n) {
+    const { cx, cy } = nodeCenter(n);
+    const prev = n.style.pointerEvents; n.style.pointerEvents = 'none';
+    const stack = document.elementsFromPoint(cx, cy);
+    n.style.pointerEvents = prev;
+    for (const hit of stack) {
+      const en = hit.closest && hit.closest('.el'); if (!en || en === n || n.contains(en)) continue;
+      const t = getEl(en.dataset.id); if (t && t.kind !== 'text') return t;
+    }
+    return null;
+  }
+  let dropTarget = null;
+  function markDrop(t) {
+    if (dropTarget === (t && t.id)) return;
+    if (dropTarget && nodes.get(dropTarget)) nodes.get(dropTarget).classList.remove('drop-target');
+    dropTarget = t ? t.id : null;
+    if (dropTarget && nodes.get(dropTarget)) nodes.get(dropTarget).classList.add('drop-target');
+  }
+  // Ancla o suelta un texto según dónde haya quedado
+  function reparent(el, detach) {
+    const n = nodes.get(el.id); if (!n) return;
+    const target = detach ? null : photoUnder(n);
+    if ((target ? target.id : null) === (el.parent || null)) return;
+    const { cx, cy } = nodeCenter(n), c = toSpaceXY(cx, cy);
+    const vis = (el.rot || 0) + frameRot(el), tw = el.w, th = n.offsetHeight;
+    let patch;
+    if (target) {
+      const a = -(target.rot || 0) * Math.PI / 180, vx = c.x - (target.x + target.w / 2), vy = c.y - (target.y + target.h / 2);
+      const lx = vx * Math.cos(a) - vy * Math.sin(a) + target.w / 2, ly = vx * Math.sin(a) + vy * Math.cos(a) + target.h / 2;
+      patch = { parent: target.id, x: Math.round(lx - tw / 2), y: Math.round(ly - th / 2), rot: Math.round((vis - (target.rot || 0)) * 10) / 10 };
+      toast('Texto anclado a la foto: se moverá con ella');
+    } else {
+      patch = { parent: null, x: Math.round(c.x - tw / 2), y: Math.round(c.y - th / 2), rot: Math.round(vis * 10) / 10 };
+      toast('Texto suelto: ya no va con la foto');
+    }
+    recent = null; Object.assign(el, patch); queue(el.id, patch); flush();
+    if (!target) socket.emit('front', el.id); // que no quede detrás de otras fotos
+    render();
+  }
 
   board.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -380,10 +464,13 @@
     const id = n.dataset.id, el = getEl(id); if (!el) return;
     if (editingId === id) return; // escribiendo dentro del texto
     stopEditing(); select(id);
+    // Lo que tocas pasa al frente
+    if (!el.parent && state.elements.some((o) => !o.parent && o.id !== id && (o.z || 0) >= (el.z || 0))) socket.emit('front', id);
     const p = toBoard(e), hd = e.target.dataset.h;
     action = { type: hd || 'move', id, start: p, moved: false, geom: null,
       orig: { x: el.x, y: el.y, w: el.w, h: el.h, rot: el.rot || 0, size: (el.style && el.style.size) || 48 } };
-    if (hd === 'rotate') { action.cx = el.x + el.w / 2; action.cy = el.y + n.offsetHeight / 2; }
+    if (hd === 'rotate') { const { cx, cy } = nodeCenter(n); const c = toSpaceXY(cx, cy); action.cx = c.x; action.cy = c.y; }
+    action.frame = frameRot(el);
     board.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -395,9 +482,11 @@
     action.moved = true;
     const el = getEl(action.id); if (!el) return;
     let g;
-    if (action.type === 'move') g = { x: Math.round(o.x + dx), y: Math.round(o.y + dy) };
-    else if (action.type === 'resize') {
-      const a = -o.rot * Math.PI / 180;
+    if (action.type === 'move') {
+      const a = -action.frame * Math.PI / 180;
+      g = { x: Math.round(o.x + dx * Math.cos(a) - dy * Math.sin(a)), y: Math.round(o.y + dx * Math.sin(a) + dy * Math.cos(a)) };
+    } else if (action.type === 'resize') {
+      const a = -(o.rot + action.frame) * Math.PI / 180;
       const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
       if (el.kind === 'text') {
         const w = Math.max(80, o.w + lx), k = w / o.w;
@@ -412,20 +501,38 @@
       ang = ((ang + 540) % 360) - 180;
       if (e.shiftKey) ang = Math.round(ang / 15) * 15;
       else for (const t of [-180, -90, 0, 90, 180]) if (Math.abs(ang - t) < 3) ang = t;
+      ang -= action.frame;
       g = { rot: Math.round(ang * 10) / 10 };
     }
     action.geom = { ...(action.geom || {}), ...g };
+    if (g.w && el.kind !== 'text' && el.w) scaleChildren(el.id, g.w / el.w);
     Object.assign(el, g); updateNode(nodes.get(el.id), el); renderToolbar(true);
+    if (el.kind === 'text' && action.type === 'move') markDrop(photoUnder(nodes.get(el.id)));
     queue(el.id, g);
   });
 
   const endAction = () => {
     if (!action) return;
-    const a = action; action = null;
-    if (a.moved) { recent = { id: a.id, geom: a.geom, until: Date.now() + 600 }; flush(); }
+    const a = action; action = null; markDrop(null);
+    if (a.moved) {
+      recent = { id: a.id, geom: a.geom, until: Date.now() + 600 }; flush();
+      const el = getEl(a.id);
+      if (el && el.kind === 'text' && a.type === 'move') reparent(el);
+    }
   };
   board.addEventListener('pointerup', endAction);
   board.addEventListener('pointercancel', endAction);
+
+  // Ctrl + rueda (o pellizco en el trackpad) sobre una foto o texto: cambia su tamaño
+  board.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const n = hit && hit.closest('.el'); if (!n) return;
+    e.preventDefault();
+    const el = getEl(n.dataset.id); if (!el) return;
+    select(el.id);
+    zoomEl(el, Math.exp(-e.deltaY * 0.004));
+  }, { passive: false });
 
   board.addEventListener('dblclick', (e) => {
     // Con la captura del puntero el evento llega al tablero: buscamos el elemento bajo el cursor
@@ -460,13 +567,38 @@
     b.contentEditable = 'false'; b.oninput = b.onblur = b.onkeydown = null;
     const text = b.innerText.replace(/\n$/, '');
     const el = getEl(id);
+    if (el && !text.trim()) { flush(); socket.emit('delete', id); if (selectedId === id) select(null); toast('Texto vacío eliminado'); return; }
     if (el && el.text !== text) { el.text = text; queue(id, { text }); }
     flush();
   }
 
+  // Tamaño: zoom alrededor del centro y «ampliar a pantalla»
+  function zoomEl(el, k) {
+    if (el.kind === 'text') {
+      const size = Math.max(10, Math.min(400, Math.round((el.style.size || 48) * k)));
+      const kk = size / (el.style.size || 48), w = Math.round(el.w * kk);
+      update(el.id, { w, x: Math.round(el.x - (w - el.w) / 2), style: { ...el.style, size } });
+    } else {
+      const w = Math.max(60, Math.min(4000, el.w * k)), hh = w * el.h / el.w;
+      update(el.id, { w: Math.round(w), h: Math.round(hh), x: Math.round(el.x - (w - el.w) / 2), y: Math.round(el.y - (hh - el.h) / 2) });
+    }
+  }
+  const prevGeom = new Map();
+  function toggleMax(el) {
+    if (prevGeom.has(el.id)) { const g = prevGeom.get(el.id); prevGeom.delete(el.id); update(el.id, g); renderToolbar(); return; }
+    prevGeom.set(el.id, { x: el.x, y: el.y, w: el.w, h: el.h, rot: el.rot || 0 });
+    // Ocupa el área que se ve en todas las pantallas (deja libre la franja del título)
+    const A = { x: 20, y: 100, w: BW - 40, h: BH - 120 }, ratio = el.w / el.h;
+    let w = A.w, hh = w / ratio; if (hh > A.h) { hh = A.h; w = hh * ratio; }
+    socket.emit('front', el.id);
+    update(el.id, { x: Math.round(A.x + (A.w - w) / 2), y: Math.round(A.y + (A.h - hh) / 2), w: Math.round(w), h: Math.round(hh), rot: 0 });
+    renderToolbar();
+  }
+
   function removeEl(id) {
     const el = getEl(id); if (!el) return;
-    if (el.kind !== 'text' && !confirm(`¿Eliminar «${el.file.name}»? Se borrará del servidor.`)) return;
+    const nTexts = state.elements.filter((c) => c.parent === id).length;
+    if (el.kind !== 'text' && !confirm(`¿Eliminar «${el.file.name}»${nTexts ? ` y ${nTexts === 1 ? 'su texto' : `sus ${nTexts} textos`}` : ''}? Se borrará del servidor.`)) return;
     socket.emit('delete', id); if (selectedId === id) select(null);
   }
 
@@ -501,10 +633,10 @@
     const n = el && nodes.get(el.id);
     if (!el || !n || document.body.classList.contains('presenting') || !$('#lightbox').hidden || !$('#editor').hidden) { tb.hidden = true; tbSig = null; return; }
     const st = el.style || {};
-    const sig = [el.id, el.hidden, el.playing, el.muted, el.showCaption, st.bold, st.align, st.font, st.bg, el.file && el.file.url !== el.file.originalUrl].join('|');
+    const sig = [el.id, el.parent, prevGeom.has(el.id), el.hidden, el.playing, el.muted, el.showCaption, st.bold, st.align, st.font, st.bg, el.file && el.file.url !== el.file.originalUrl].join('|');
     if (sig !== tbSig || tb.hidden) { buildToolbar(tb, el); tbSig = sig; }
     tb.hidden = false;
-    const sz = tb.querySelector('.tb-size'); if (sz) sz.textContent = st.size;
+    const sz = tb.querySelector('.tb-size'); if (sz) sz.textContent = Math.round(st.size || 48);
     // Posición sobre el elemento
     const r = n.getBoundingClientRect(), tr = tb.getBoundingClientRect();
     const topLimit = ($('#topbar').getBoundingClientRect().bottom || 0) + 8;
@@ -544,15 +676,21 @@
       }
       tb.append(tbSep());
       const step = (d) => { const s = Math.max(10, Math.min(400, (getEl(id).style.size || 48) + d)); update(id, { style: { ...getEl(id).style, size: s } }); };
-      tb.append(tbBtn('minus', 'Más pequeño', () => step(-6)), h('span', { class: 'tb-size', text: String(st.size || 48) }), tbBtn('plus', 'Más grande', () => step(6)));
+      tb.append(tbBtn('minus', 'Más pequeño', () => step(-6)), h('span', { class: 'tb-size', text: String(Math.round(st.size || 48)) }), tbBtn('plus', 'Más grande', () => step(6)));
       tb.append(tbBtn('bold', 'Negrita', () => update(id, { style: { ...st, bold: !st.bold } }), { on: st.bold }));
       const nextAlign = { left: 'center', center: 'right', right: 'left' }[st.align || 'center'];
       tb.append(tbBtn({ left: 'alignL', center: 'alignC', right: 'alignR' }[st.align || 'center'], 'Alineación', () => update(id, { style: { ...st, align: nextAlign } })));
       const font = h('select', { class: 'tb-select', title: 'Tipo de letra' });
       for (const [v, name] of [['sans', 'Moderna'], ['serif', 'Clásica'], ['mono', 'Máquina'], ['hand', 'A mano']]) font.append(h('option', { value: v, text: name, selected: (st.font || 'sans') === v }));
       font.onchange = () => update(id, { style: { ...getEl(id).style, font: font.value } });
-      tb.append(font, tbSep(), tbBtn('edit', 'Editar texto (Intro)', () => startEditing(id)));
+      tb.append(font, tbSep(), tbBtn('edit', 'Cambiar el texto (doble clic o Intro)', () => startEditing(id), { label: 'Editar' }));
+      if (el.parent) tb.append(tbBtn('unlink', 'Soltar de la foto (dejará de moverse con ella)', () => reparent(getEl(id), true), { label: 'Soltar' }));
     } else {
+      tb.append(
+        tbBtn('minus', 'Más pequeña (Ctrl + rueda)', () => zoomEl(getEl(id), 1 / 1.2)),
+        tbBtn('plus', 'Más grande (Ctrl + rueda)', () => zoomEl(getEl(id), 1.2)),
+        tbBtn(prevGeom.has(id) ? 'shrink' : 'expand', prevGeom.has(id) ? 'Volver al tamaño anterior' : 'Ampliar a toda la pantalla', () => toggleMax(getEl(id)), { label: prevGeom.has(id) ? 'Reducir' : 'Ampliar', on: prevGeom.has(id) }),
+        tbSep());
       if (el.kind === 'image') tb.append(tbBtn('edit', 'Editar foto', () => openEditor(id), { label: 'Editar' }));
       if (isMedia(el)) tb.append(tbBtn('view', 'Ver en grande', () => openLightbox(id)));
       if (el.kind === 'video' || el.kind === 'audio') {
@@ -562,13 +700,13 @@
       }
       if (el.kind === 'pdf' || el.kind === 'doc') tb.append(tbBtn('open', 'Abrir archivo', () => window.open(el.file.url, '_blank', 'noopener'), { label: 'Abrir' }));
       if (el.author || el.message) tb.append(tbBtn('caption', 'Mostrar nombre y mensaje', () => update(id, { showCaption: !el.showCaption }), { on: el.showCaption }));
-      tb.append(tbBtn('text', 'Añadir texto encima', () => $('#addText').click()));
+      tb.append(tbBtn('text', 'Añadir texto encima (se moverá con la foto)', () => $('#addText').click(), { label: 'Texto' }));
     }
     tb.append(tbSep(),
       tbBtn('front', 'Traer al frente', () => socket.emit('front', id)),
       tbBtn('back', 'Enviar al fondo', () => socket.emit('back', id)),
       tbBtn(el.hidden ? 'eyeoff' : 'eye', el.hidden ? 'Oculto en pantalla: mostrar' : 'Ocultar de la pantalla', () => update(id, { hidden: !el.hidden }), { on: el.hidden }),
-      tbBtn('trash', 'Eliminar (Supr)', () => removeEl(id), { danger: true }));
+      tbBtn('trash', 'Eliminar (Supr)', () => removeEl(id), { danger: true, label: el.kind === 'text' ? 'Eliminar' : '' }));
   }
 
   // ---------- Lista lateral ----------
@@ -610,7 +748,7 @@
         acts.append(sb(el.hidden ? 'Mostrar' : 'Ocultar', '', () => update(el.id, { hidden: !el.hidden })));
         acts.append(sb('Eliminar', 'del', () => removeEl(el.id)));
       }
-      const item = h('div', { class: 'item' + (el.id === selectedId ? ' sel' : '') + (el.hidden ? ' hid' : '') },
+      const item = h('div', { class: 'item' + (el.id === selectedId ? ' is-sel' : '') + (el.hidden ? ' hid' : '') },
         th,
         h('div', { class: 'info' },
           h('div', { class: 'who', text: el.author || 'Anónimo' }),

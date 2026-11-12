@@ -1001,11 +1001,15 @@
   }
 
   // ---------- Visor ----------
-  const LB = { list: [], i: 0, project: false };
+  // Al abrir el visor, la foto sale también a pantalla completa en /pantalla (se puede desactivar)
+  const LB = { list: [], i: 0, project: false, pref: true };
   function openLightbox(id, includePending) {
     LB.list = state.elements.filter((e) => isMedia(e) && (e.status === 'live' || (includePending && e.id === id)))
       .sort((a, b) => a.createdAt - b.createdAt).map((e) => e.id);
-    LB.i = Math.max(0, LB.list.indexOf(id)); LB.project = false;
+    LB.i = Math.max(0, LB.list.indexOf(id));
+    const first = getEl(LB.list[LB.i]);
+    LB.project = LB.pref && Boolean(first && first.status === 'live');
+    if (LB.project) toast('Esta foto se ve ahora a pantalla completa en /pantalla');
     $('#lightbox').hidden = false; $('#toolbar').hidden = true; showLightbox();
   }
   function showLightbox() {
@@ -1018,6 +1022,7 @@
     $('#lbEdit').hidden = el.kind !== 'image';
     $('#lbProject').hidden = el.status !== 'live';
     $('#lbProject').classList.toggle('on', LB.project);
+    $('#lbProject').lastChild.textContent = LB.project ? 'En /pantalla' : 'Mostrar en /pantalla';
     $('#lbPrev').hidden = $('#lbNext').hidden = LB.list.length < 2;
     if (LB.project) setting({ spotlight: el.id });
   }
@@ -1032,7 +1037,9 @@
   $('#lbNext').onclick = () => stepLightbox(1);
   $('#lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') closeLightbox(); });
   $('#lbProject').onclick = () => {
-    LB.project = !LB.project; $('#lbProject').classList.toggle('on', LB.project);
+    LB.project = !LB.project; LB.pref = LB.project; // recuerda la elección para las próximas veces
+    $('#lbProject').classList.toggle('on', LB.project);
+    $('#lbProject').lastChild.textContent = LB.project ? 'En /pantalla' : 'Mostrar en /pantalla';
     setting({ spotlight: LB.project ? LB.list[LB.i] : '' });
     toast(LB.project ? 'Se ve en grande en /pantalla' : 'Quitado de /pantalla');
   };

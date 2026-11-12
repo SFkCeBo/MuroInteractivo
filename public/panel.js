@@ -223,6 +223,7 @@
       renderTopbar(); renderSide(); renderToolbar();
     }
     renderSpotlight();
+    renderFeed();
     initialized = true;
   }
 
@@ -254,9 +255,12 @@
     let b = c.firstChild;
     if (!b) { b = h('div', { class: 'textbox' }); c.append(b); }
     if (editingId !== el.id && b.textContent !== el.text) b.textContent = el.text;
+    styleText(b, st, 1);
+  }
+  function styleText(b, st, k) {
     b.style.color = st.color || '#fff';
     b.style.background = st.bg || 'transparent';
-    b.style.fontSize = (st.size || 48) + 'px';
+    b.style.fontSize = (st.size || 48) * k + 'px';
     b.style.fontWeight = st.bold ? '750' : '400';
     b.style.textAlign = st.align || 'center';
     b.style.fontFamily = FONTS[st.font] || FONTS.sans;
@@ -265,14 +269,7 @@
   let soundBlocked = false;
   function updateMedia(n, c, el) {
     const key = el.kind + '|' + el.file.url;
-    if (n._key !== key) {
-      n._key = key; c.textContent = '';
-      if (el.kind === 'image') c.append(h('img', { src: el.file.url, alt: el.message || el.file.name, draggable: 'false' }));
-      else if (el.kind === 'video') { const v = h('video', { src: el.file.url + '#t=0.1', playsinline: true, loop: true, preload: 'metadata' }); v.muted = true; c.append(v); }
-      else if (el.kind === 'audio') c.append(h('div', { class: 'filecard' }, iconBox('audio'), h('div', { class: 'fname', text: el.file.name }), h('audio', { src: el.file.url, preload: 'metadata', loop: true })));
-      else c.append(h('div', { class: 'filecard' }, iconBox(el.kind), h('div', { class: 'fname', text: el.file.name }),
-        h('div', { class: 'fmeta', text: (el.kind === 'pdf' ? 'PDF' : extOf(el.file.name)) + (el.author ? ' · ' + el.author : '') })));
-    }
+    if (n._key !== key) { n._key = key; buildMedia(c, el); }
     const m = c.querySelector('video, audio');
     if (m) {
       const muted = el.muted ?? (el.kind === 'video');
@@ -284,6 +281,14 @@
       } else if (!el.playing && !m.paused) m.pause();
       n.classList.toggle('paused', !el.playing);
     }
+  }
+  function buildMedia(c, el) {
+    c.textContent = '';
+    if (el.kind === 'image') c.append(h('img', { src: el.file.url, alt: el.message || el.file.name, draggable: 'false' }));
+    else if (el.kind === 'video') { const v = h('video', { src: el.file.url + '#t=0.1', playsinline: true, loop: true, preload: 'metadata' }); v.muted = true; c.append(v); }
+    else if (el.kind === 'audio') c.append(h('div', { class: 'filecard' }, iconBox('audio'), h('div', { class: 'fname', text: el.file.name }), h('audio', { src: el.file.url, preload: 'metadata', loop: true })));
+    else c.append(h('div', { class: 'filecard' }, iconBox(el.kind), h('div', { class: 'fname', text: el.file.name }),
+      h('div', { class: 'fmeta', text: (el.kind === 'pdf' ? 'PDF' : extOf(el.file.name)) + (el.author ? ' · ' + el.author : '') })));
   }
   function iconBox(kind) { return h('div', { class: 'ficon', html: ICON[kind] || ICON.doc }); }
 
@@ -311,7 +316,94 @@
     $('#spotCap').textContent = [el.message, el.author ? '— ' + el.author : ''].filter(Boolean).join('  ');
   }
 
-  if (MODE === 'view') { connect(); return; }
+  // ---------- /pantalla en vertical (móvil): fotos a todo el ancho, una debajo de otra ----------
+  const feedCards = new Map();
+  const captionOf = (el) => (el.showCaption ? [el.message, el.author ? '— ' + el.author : ''].filter(Boolean).join('  ') : '');
+  function renderFeed() {
+    if (MODE !== 'view') return;
+    const on = innerWidth < innerHeight * 0.95;
+    document.body.classList.toggle('feed', on);
+    if (!on) return;
+    const s = state.settings || {};
+    const feed = $('#feed');
+    feed.style.background = s.background || '#14161b';
+    feed.style.color = luminance(s.background) > 0.45 ? '#15171b' : '#ffffff';
+    $('#feedTitle').textContent = s.title || '';
+    const list = $('#feedList');
+    const W = list.clientWidth || innerWidth - 24;
+    const roots = state.elements.filter((e) => e.status === 'live' && !e.hidden && !e.parent).sort((a, b) => b.createdAt - a.createdAt);
+    const seen = new Set();
+    roots.forEach((el, i) => {
+      let card = feedCards.get(el.id);
+      if (!card) {
+        card = h('div', { class: 'fcard' });
+        if (initialized) { card.classList.add('enter'); setTimeout(() => card.classList.remove('enter'), 700); }
+        feedCards.set(el.id, card);
+      }
+      seen.add(el.id);
+      if (list.children[i] !== card) list.insertBefore(card, list.children[i] || null);
+      fillCard(card, el, W);
+    });
+    for (const [id, c] of feedCards) if (!seen.has(id)) { c.remove(); feedCards.delete(id); }
+    $('#feedEmpty').hidden = roots.length > 0;
+  }
+  function fillCard(card, el, W) {
+    card.classList.toggle('is-text', el.kind === 'text');
+    if (el.kind === 'text') {
+      card._key = null; card.style.height = ''; card.textContent = '';
+      const b = h('div', { class: 'textbox', text: el.text });
+      styleText(b, el.style || {}, Math.min(1, W / el.w)); card.append(b);
+      return;
+    }
+    const k = W / el.w;
+    card.style.height = Math.round(el.h * k) + 'px';
+    const key = el.kind + '|' + el.file.url;
+    if (card._key !== key) {
+      card._key = key; card.textContent = '';
+      const inner = h('div', { class: 'el finner kind-' + el.kind }, h('div', { class: 'content' }), h('div', { class: 'caption' }), h('div', { class: 'ftexts' }));
+      card.append(inner); buildMedia(inner.firstChild, el);
+    }
+    const inner = card.firstChild;
+    inner.style.width = el.w + 'px'; inner.style.height = el.h + 'px'; inner.style.transform = `scale(${k})`;
+    const cap = inner.children[1], capText = captionOf(el); cap.textContent = capText; cap.hidden = !capText;
+    const m = inner.querySelector('video, audio');
+    if (m) {
+      m.muted = el.muted ?? (el.kind === 'video');
+      if (el.playing && m.paused) m.play().catch(() => { m.muted = true; m.play().catch(() => {}); });
+      else if (!el.playing && !m.paused) m.pause();
+    }
+    // Textos anclados: mismas posiciones relativas, escalados con la foto
+    const tl = inner.children[2]; tl.textContent = '';
+    for (const c of state.elements) {
+      if (c.parent !== el.id || c.hidden || c.status !== 'live') continue;
+      const n = h('div', { class: 'ftext' });
+      n.style.left = c.x + 'px'; n.style.top = c.y + 'px'; n.style.width = c.w + 'px'; n.style.transform = `rotate(${c.rot || 0}deg)`;
+      const b = h('div', { class: 'textbox', text: c.text }); styleText(b, c.style || {}, 1); n.append(b); tl.append(n);
+    }
+  }
+
+  if (MODE === 'view') {
+    let rT = null;
+    window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(renderFeed, 80); });
+    // Botón de pantalla completa (se esconde solo)
+    const fs = $('#fsBtn');
+    const canFs = Boolean(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+    let fsT = null;
+    const showFs = () => {
+      if (!canFs || document.fullscreenElement || document.webkitFullscreenElement) { fs.hidden = true; return; }
+      fs.hidden = false; fs.classList.remove('fade'); clearTimeout(fsT); fsT = setTimeout(() => fs.classList.add('fade'), 3500);
+    };
+    fs.onclick = (e) => {
+      e.stopPropagation();
+      const d = document.documentElement;
+      (d.requestFullscreen ? d.requestFullscreen() : d.webkitRequestFullscreen()).catch?.(() => {});
+    };
+    ['pointermove', 'pointerdown'].forEach((ev) => document.addEventListener(ev, showFs, { passive: true }));
+    document.addEventListener('fullscreenchange', showFs);
+    document.addEventListener('webkitfullscreenchange', showFs);
+    showFs();
+    connect(); return;
+  }
 
   // =====================================================================
   //  A partir de aquí: solo panel del presentador
@@ -345,7 +437,8 @@
     toast(on ? 'Moderación activada: lo nuevo esperará en «Pendiente»' : 'Moderación desactivada: lo nuevo aparece directamente');
   };
   $('#spotStop').onclick = () => setting({ spotlight: '' });
-  $('#sideBtn').onclick = () => { document.body.classList.toggle('side-closed'); fit(); };
+  const isNarrow = () => matchMedia('(max-width: 900px)').matches;
+  $('#sideBtn').onclick = () => { document.body.classList.toggle(isNarrow() ? 'side-open' : 'side-closed'); fit(); };
   $('#clearBtn').onclick = () => {
     if (!state.elements.length) return;
     if (confirm('¿Vaciar el panel? Se borrarán TODOS los archivos y textos. No se puede deshacer.')) { socket.emit('clear-all'); selectedId = null; }
@@ -971,6 +1064,13 @@
   };
 
   // ---------- Arranque ----------
+  // En el móvil en vertical el muro (horizontal) se ve pequeño: sugerimos girarlo una vez
+  let rotHinted = false;
+  const rotHint = () => {
+    if (rotHinted || !isNarrow() || innerWidth >= innerHeight) return;
+    rotHinted = true; setTimeout(() => toast('Gira el móvil para ver el muro más grande'), 1200);
+  };
+  window.addEventListener('resize', rotHint); rotHint();
   try { pin = sessionStorage.getItem('pv-pin'); } catch {}
   if (pin) connect(); else showLogin();
   fit();

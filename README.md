@@ -70,7 +70,7 @@ PUBLIC_URL=https://algo.trycloudflare.com ADMIN_PIN=2468 npm start
 ## Datos y límites
 
 - Todo se guarda en `data/` (`state.json` + `uploads/`). Si reinicias, el panel sigue igual. Para empezar de cero: botón de papelera o borra `data/`.
-- Hasta 10 archivos por envío, 50 MB por archivo (`MAX_FILE_MB` para cambiarlo) y 40 archivos por persona cada 10 minutos.
+- Hasta 10 archivos por envío, 50 MB por archivo (`MAX_FILE_MB` para cambiarlo) y un límite anti-abuso de 600 archivos cada 10 minutos por conexión (`RATE_LIMIT`; en la wifi de un evento toda la sala suele compartir conexión).
 - Las fotos grandes se reducen en el propio móvil antes de subirlas (máx. 2560 px) para ir rápido con wifi saturada.
 - Las fotos HEIC de iPhone se convierten casi siempre a JPG al subirlas. Si alguna llega como HEIC, solo se verá en Safari.
 - Los filtros de color del editor necesitan Chrome, Edge o Firefox. Girar, recortar y calidez funcionan en cualquier navegador.

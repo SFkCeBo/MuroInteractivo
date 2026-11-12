@@ -152,9 +152,17 @@ function uploadUrl(req) {
   return `${req.protocol}://${host}/`;
 }
 
+// El QR se calcula una vez por dirección y se reutiliza (cada móvil del público pide /api/info)
+const qrCache = new Map();
+async function qrFor(url) {
+  if (!qrCache.has(url)) qrCache.set(url, await QRCode.toDataURL(url, { margin: 1, width: 600, errorCorrectionLevel: 'M' }));
+  return qrCache.get(url);
+}
+
 app.get('/api/info', async (req, res) => {
   const url = uploadUrl(req);
-  const qr = await QRCode.toDataURL(url, { margin: 1, width: 600, errorCorrectionLevel: 'M' });
+  let qr = '';
+  try { qr = await qrFor(url); } catch (e) { console.error('QR', e); }
   res.json({ uploadUrl: url, qr, title: state.settings.title, subtitle: state.settings.subtitle,
     uploadsOpen: state.settings.uploadsOpen, maxFileMb: MAX_FILE_MB, board: { w: BOARD_W, h: BOARD_H } });
 });
@@ -170,12 +178,14 @@ const upload = multer({
   fileFilter: (req, file, cb) => cb(null, Boolean(ALLOWED[file.mimetype])),
 });
 
-// Limitador sencillo: 40 archivos por IP cada 10 minutos
+// Limitador anti-abuso. Generoso a propósito: en la wifi de un evento todo el público
+// suele salir a internet con la MISMA IP, así que el límite es para toda la sala junta.
+const RATE_LIMIT = Number(process.env.RATE_LIMIT) || 600; // archivos por IP cada 10 minutos
 const hits = new Map();
 function rateOk(ip, n) {
   const now = Date.now();
   const rec = (hits.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
-  if (rec.length + n > 40) return false;
+  if (rec.length + n > RATE_LIMIT) return false;
   for (let i = 0; i < n; i++) rec.push(now);
   hits.set(ip, rec);
   return true;
@@ -426,6 +436,18 @@ io.on('connection', (socket) => {
     broadcast();
   });
 });
+
+// Red de seguridad: un error inesperado se registra pero no tumba el servidor
+// (en Render gratuito, un reinicio borraría las fotos subidas).
+process.on('uncaughtException', (err) => console.error('Error no controlado:', err));
+process.on('unhandledRejection', (err) => console.error('Promesa rechazada:', err));
+// Guarda el estado al apagarse (p. ej. un redeploy) para no perder el último cambio
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    try { fs.writeFileSync(STATE_FILE, JSON.stringify(state)); } catch {}
+    process.exit(0);
+  });
+}
 
 server.listen(PORT, () => {
   const ip = lanIp();

@@ -22,7 +22,7 @@
     <button class="btn" id="collageBtn" title="Esparcir como collage"><i data-i="collage"></i><span class="opt">Collage</span></button>
     <span class="sep"></span>
     <button class="btn toggle" id="qrBtn" title="Mostrar el QR en una esquina del muro"><i data-i="qr"></i>QR</button>
-    <button class="btn toggle" id="bigQrBtn" title="Mostrar el QR a pantalla completa mientras no haya archivos"><i data-i="expand"></i><span class="opt">QR grande</span></button>
+    <button class="btn toggle" id="bigQrBtn" title="Mostrar ahora el QR a pantalla completa en /pantalla (sin archivos ya sale solo)"><i data-i="qr"></i><span class="opt">QR grande</span></button>
     <button class="btn toggle" id="openBtn" title="Permitir que el público suba archivos"><i data-i="upload"></i>Subidas</button>
     <button class="btn toggle" id="modBtn" title="Revisar cada archivo antes de mostrarlo"><i data-i="shield"></i>Moderar</button>
     <label class="btn colorbtn" title="Color de fondo"><input type="color" id="bgInput" value="#14161b"><span class="opt">Fondo</span></label>
@@ -49,6 +49,12 @@
         <div id="space"></div>
         <div id="qrBox"><img id="qrImg" alt="Código QR para subir archivos"><div class="t">Sube tus fotos</div><div class="u" id="qrUrl"></div></div>
       </div>
+      <div id="zoomUi">
+        <button class="zbtn" id="zoomOut" title="Alejar (rueda del ratón)"><i data-i="minus"></i></button>
+        <button class="zbtn pct" id="zoomPct" title="Volver al 100 %">100%</button>
+        <button class="zbtn" id="zoomIn" title="Acercar (rueda del ratón)"><i data-i="plus"></i></button>
+        <button class="zbtn all" id="zoomAll" title="Ver todas las fotos (la pantalla se ajusta sola cuando llegan más)"><i data-i="fit"></i>Ver todo</button>
+      </div>
     </div>
 
     <aside id="side">
@@ -60,7 +66,7 @@
         <button class="sbtn ok" id="approveAll">Aprobar todo</button>
       </div>
       <div id="list"></div>
-      <div class="hint">Arrastra un texto sobre una foto para anclarlo · Ctrl + rueda: tamaño · Doble clic: ver o editar · Supr: borrar</div>
+      <div class="hint">Rueda: zoom del muro · Arrastra el fondo: desplazar · Arrastra un texto sobre una foto para anclarlo · Doble clic: ver o editar · Supr: borrar</div>
     </aside>
   </div>
 </div>

@@ -11,6 +11,7 @@
   let state = { settings: {}, elements: [] };
   let socket = null, pin = null, scale = 1, initialized = false;
   let selectedId = null, editingId = null, action = null, recent = null;
+  let lastCamLocal = 0; // cuándo movió el presentador la cámara por última vez
   const nodes = new Map();
   const known = new Set();
 
@@ -49,6 +50,8 @@
     alignC: P('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
     alignR: P('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
     minus: P('<path d="M5 12h14"/>'),
+    focus: P('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>'),
+    fit: P('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/>'),
     shrink: P('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'),
     unlink: P('<path d="M9 15l-1.5 1.5a3.5 3.5 0 0 1-5-5L5 9M15 9l1.5-1.5a3.5 3.5 0 0 1 5 5L19 15M8 2v3M2 8h3M16 22v-3M22 16h-3"/>'),
     plus: P('<path d="M12 5v14M5 12h14"/>'),
@@ -110,7 +113,12 @@
     socket = io({ auth: { role: MODE, pin } });
     socket.on('connect', () => $('#conn').classList.add('on'));
     socket.on('disconnect', () => $('#conn').classList.remove('on'));
-    socket.on('state', (s) => { state = s; render(); });
+    socket.on('state', (s) => {
+      // Si acabo de mover la cámara, mi vista manda (el servidor puede ir un instante por detrás)
+      if (MODE === 'admin' && Date.now() - lastCamLocal < 800 && state.settings && s.settings) s.settings.camera = state.settings.camera;
+      state = s; render();
+    });
+    socket.on('camera', (c) => { if (state.settings) { state.settings.camera = c; applyCamera(); } });
     socket.on('auth-error', () => {
       try { sessionStorage.removeItem('pv-pin'); } catch {}
       showLogin('PIN incorrecto');
@@ -162,9 +170,38 @@
     view.ox = (view.w - BW) / 2; view.oy = (view.h - BH) / 2;
     board.style.width = view.w + 'px'; board.style.height = view.h + 'px';
     board.style.transform = `scale(${scale})`;
-    space.style.left = view.ox + 'px'; space.style.top = view.oy + 'px';
-    board.style.setProperty('--inv', String(1 / scale));
-    if (MODE === 'admin') renderToolbar(true);
+    applyCamera();
+  }
+
+  // ---------- Cámara: zoom y desplazamiento del muro, compartidos con /pantalla ----------
+  // cam.z = 1 → la zona de referencia (1920×1080) llena la pantalla. Menos de 1 = más alejado.
+  const cam = { x: BW / 2, y: BH / 2, z: 1 };
+  function autoCamera() {
+    // Encaja todas las fotos visibles (nunca acerca más que la vista normal)
+    let x0 = 0, y0 = 0, x1 = BW, y1 = BH;
+    for (const e of state.elements) {
+      if (e.status !== 'live' || e.hidden || e.parent) continue;
+      const hh = e.kind === 'text' ? (nodes.get(e.id)?.offsetHeight || e.h) : e.h;
+      x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y); x1 = Math.max(x1, e.x + e.w); y1 = Math.max(y1, e.y + hh);
+    }
+    // Márgenes en píxeles de pantalla (no del muro): siempre libre la franja del título
+    // y, si se ve el QR de la esquina, una columna libre a la derecha para que no tape fotos
+    const qr = state.settings && state.settings.showQr && !$('#qrBox').hidden;
+    const TOP = 110, LEFT = 30, RIGHT = qr ? 330 : 30, BOT = 30;
+    const z = Math.min(1, (BW - LEFT - RIGHT) / (x1 - x0), (BH - TOP - BOT) / (y1 - y0));
+    return { x: (x0 + x1) / 2 + (RIGHT - LEFT) / 2 / z, y: (y0 + y1) / 2 - (TOP - BOT) / 2 / z, z };
+  }
+  function applyCamera() {
+    const c = (state.settings && state.settings.camera) || { mode: 'auto' };
+    // Mientras arrastras algo la cámara no se mueve, para que no salte bajo el cursor
+    if (!(action && action.type !== 'pan' && action.type !== 'pinch')) {
+      const t = c.mode === 'manual' ? c : autoCamera();
+      cam.x = t.x; cam.y = t.y; cam.z = t.z;
+    }
+    const tx = view.w / 2 - cam.x * cam.z, ty = view.h / 2 - cam.y * cam.z;
+    space.style.transform = `translate(${tx}px, ${ty}px) scale(${cam.z})`;
+    board.style.setProperty('--inv', String(1 / (scale * cam.z)));
+    if (MODE === 'admin') { renderToolbar(true); renderZoomUi(); }
   }
   new ResizeObserver(fit).observe(wrap);
   window.addEventListener('resize', fit);
@@ -183,8 +220,10 @@
     $('#boardTitle').textContent = s.title || '';
     // Sin archivos en el muro: QR a pantalla completa (si está activado)
     const files = state.elements.filter((e) => e.status === 'live' && !e.hidden && e.kind !== 'text').length;
-    const hero = s.bigQr !== false && files === 0;
+    const hero = Boolean(s.qrFull) || (s.bigQr !== false && files === 0);
     $('#qrHero').hidden = !hero;
+    $('#qrHero').classList.toggle('cover', Boolean(s.qrFull) && files > 0);
+    $('#qrHero').style.background = s.qrFull && files > 0 ? (s.background || '#14161b') : '';
     $('#heroTitle').textContent = s.title || '';
     $('#boardTitle').hidden = hero;
     $('#qrBox').hidden = !s.showQr || hero;
@@ -231,6 +270,7 @@
     }
     renderSpotlight();
     renderFeed();
+    applyCamera();
     initialized = true;
   }
 
@@ -352,8 +392,9 @@
       fillCard(card, el, W);
     });
     for (const [id, c] of feedCards) if (!seen.has(id)) { c.remove(); feedCards.delete(id); }
-    const hero = s.bigQr !== false && !roots.some((e) => e.kind !== 'text');
+    const hero = Boolean(s.qrFull) || (s.bigQr !== false && !roots.some((e) => e.kind !== 'text'));
     $('#feedEmpty').hidden = roots.length > 0 && !hero;
+    list.hidden = Boolean(s.qrFull);
     $('#feedEmpty').classList.toggle('is-hero', hero);
     $('#feedTitle').classList.toggle('is-hero', hero);
   }
@@ -425,7 +466,7 @@
     const ti = $('#titleInput'); if (document.activeElement !== ti) ti.value = s.title || '';
     const bg = $('#bgInput'); if (document.activeElement !== bg) bg.value = /^#[0-9a-f]{6}$/i.test(s.background) ? s.background : '#14161b';
     $('#qrBtn').classList.toggle('on', Boolean(s.showQr));
-    $('#bigQrBtn').classList.toggle('on', s.bigQr !== false);
+    $('#bigQrBtn').classList.toggle('on', Boolean(s.qrFull));
     $('#openBtn').classList.toggle('on', Boolean(s.uploadsOpen));
     $('#openBtn').lastChild.textContent = s.uploadsOpen ? 'Subidas' : 'Cerradas';
     $('#openBtn').title = s.uploadsOpen ? 'Subidas abiertas: pulsa para cerrarlas' : 'Subidas cerradas: pulsa para abrirlas';
@@ -443,8 +484,8 @@
   $('#bgInput').addEventListener('input', (e) => { const v = e.target.value; board.style.background = v; clearTimeout(bgT); bgT = setTimeout(() => setting({ background: v }), 120); });
   $('#qrBtn').onclick = () => setting({ showQr: !state.settings.showQr });
   $('#bigQrBtn').onclick = () => {
-    const on = state.settings.bigQr === false; setting({ bigQr: on });
-    toast(on ? 'El QR se verá a pantalla completa mientras no haya archivos' : 'QR grande desactivado');
+    const on = !state.settings.qrFull; setting({ qrFull: on });
+    toast(on ? 'QR a pantalla completa en /pantalla. Pulsa otra vez para volver a las fotos' : 'De vuelta a las fotos');
   };
   $('#openBtn').onclick = () => setting({ uploadsOpen: !state.settings.uploadsOpen });
   $('#modBtn').onclick = () => {
@@ -492,26 +533,89 @@
       const score = Math.min(cw, ch * 4 / 3);
       if (!best || score > best.score) best = { cols, rows, cw, ch, score };
     }
-    const gap = 18;
+    let gap = 18;
+    if (best.score < 300) {
+      // Demasiadas para la pantalla: cuadrícula más grande que crece y la cámara se aleja
+      const cw = 340, ch = 270, cols = Math.max(1, Math.round(Math.sqrt(items.length * (BW / BH) * (ch / cw))));
+      const rows = Math.ceil(items.length / cols), W = cols * cw, H = rows * ch;
+      A.x = BW / 2 - W / 2; A.y = BH / 2 + 40 - H / 2; best = { cols, rows, cw, ch };
+    }
     const pos = items.map((el, i) => {
       const c = i % best.cols, r = Math.floor(i / best.cols), ratio = el.w / el.h;
       let w = best.cw - gap, hh = w / ratio;
       if (hh > best.ch - gap) { hh = best.ch - gap; w = hh * ratio; }
       return { id: el.id, x: Math.round(A.x + c * best.cw + (best.cw - w) / 2), y: Math.round(A.y + r * best.ch + (best.ch - hh) / 2), w: Math.round(w), h: Math.round(hh), rot: 0 };
     });
-    socket.emit('layout', pos);
+    socket.emit('layout', pos); setAutoCamera();
   };
   $('#collageBtn').onclick = () => {
-    const items = state.elements.filter((e) => e.status === 'live' && !e.hidden && e.kind !== 'text');
+    const items = state.elements.filter((e) => e.status === 'live' && !e.hidden && e.kind !== 'text')
+      .map((e) => ({ e, r: Math.random() })).sort((a, b) => a.r - b.r).map((o) => o.e);
     if (!items.length) return toast('Todavía no hay archivos que colocar');
-    const A = layoutArea(); const area = (A.w * A.h * 0.85) / items.length;
-    const pos = items.map((el) => {
-      const ratio = el.w / el.h; let w = Math.min(560, Math.sqrt(area * ratio)), hh = w / ratio;
-      if (hh > 520) { hh = 520; w = hh * ratio; }
-      return { id: el.id, x: Math.round(A.x + Math.random() * Math.max(1, A.w - w)), y: Math.round(A.y + Math.random() * Math.max(1, A.h - hh)), w: Math.round(w), h: Math.round(hh), rot: Math.round((Math.random() - 0.5) * 14) };
+    // Cuadrícula desordenada: cada foto en su celda con un poco de desplazamiento y giro
+    const A = layoutArea();
+    let cols = Math.max(1, Math.round(Math.sqrt(items.length * (A.w / A.h) * 0.8)));
+    let rows = Math.ceil(items.length / cols);
+    let cw = A.w / cols, ch = A.h / rows;
+    if (Math.min(cw, ch * 4 / 3) < 330) { // no caben bien: el muro crece
+      cw = 360; ch = 290; cols = Math.max(1, Math.round(Math.sqrt(items.length * (BW / BH) * (ch / cw)))); rows = Math.ceil(items.length / cols);
+      A.w = cols * cw; A.h = rows * ch; A.x = BW / 2 - A.w / 2; A.y = BH / 2 + 40 - A.h / 2;
+    }
+    const pos = items.map((el, i) => {
+      const c = i % cols, r = Math.floor(i / cols), ratio = el.w / el.h;
+      let w = cw * (0.82 + Math.random() * 0.12), hh = w / ratio;
+      if (hh > ch * 0.9) { hh = ch * 0.9; w = hh * ratio; }
+      const jx = (Math.random() - 0.5) * (cw - w) * 0.9, jy = (Math.random() - 0.5) * (ch - hh) * 0.9;
+      return { id: el.id, x: Math.round(A.x + c * cw + (cw - w) / 2 + jx), y: Math.round(A.y + r * ch + (ch - hh) / 2 + jy), w: Math.round(w), h: Math.round(hh), rot: Math.round((Math.random() - 0.5) * 12) };
     });
-    socket.emit('layout', pos);
+    socket.emit('layout', pos); setAutoCamera();
   };
+
+  // ---------- Controles de cámara ----------
+  const touches = new Map();
+  let camT = null, camPending = null;
+  function setCamera(c, animate) {
+    const z = Math.min(12, Math.max(0.03, c.z));
+    state.settings.camera = { mode: 'manual', x: c.x, y: c.y, z }; lastCamLocal = Date.now();
+    if (animate) { space.classList.add('cam-anim'); setTimeout(() => space.classList.remove('cam-anim'), 450); }
+    applyCamera();
+    camPending = state.settings.camera;
+    if (!camT) camT = setTimeout(() => { camT = null; socket.emit('camera', camPending); }, 60);
+  }
+  function setAutoCamera() {
+    state.settings.camera = { mode: 'auto' }; lastCamLocal = Date.now();
+    space.classList.add('cam-anim'); setTimeout(() => space.classList.remove('cam-anim'), 450);
+    applyCamera(); socket.emit('camera', { mode: 'auto' });
+  }
+  // Zoom manteniendo fijo el punto bajo el cursor (o los dedos)
+  function zoomCameraAt(clientX, clientY, z, anchor) {
+    z = Math.min(12, Math.max(0.03, z));
+    const p = anchor || toSpaceXY(clientX, clientY);
+    const r = board.getBoundingClientRect();
+    const bx = (clientX - r.left) / scale, by = (clientY - r.top) / scale;
+    setCamera({ x: p.x - (bx - view.w / 2) / z, y: p.y - (by - view.h / 2) / z, z });
+  }
+  function startPinch() {
+    const [a, b] = [...touches.values()];
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    action = { type: 'pinch', d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), z0: cam.z, anchor: toSpaceXY(mx, my) };
+  }
+  function focusOn(el) {
+    const t = el.parent ? parentOf(el) : el; if (!t) return;
+    const hh = t.kind === 'text' ? (nodes.get(t.id)?.offsetHeight || t.h) : t.h;
+    const z = Math.min(8, BW / (t.w + 120), (BH - 140) / (hh + 80));
+    setCamera({ x: t.x + t.w / 2, y: t.y + hh / 2 - 40 / z, z }, true);
+  }
+  function renderZoomUi() {
+    const c = state.settings && state.settings.camera;
+    $('#zoomPct').textContent = Math.round(cam.z * 100) + '%';
+    $('#zoomAll').classList.toggle('on', !c || c.mode !== 'manual');
+  }
+  const zoomStep = (k) => { const r = wrap.getBoundingClientRect(); zoomCameraAt(r.left + r.width / 2, r.top + r.height / 2, cam.z * k); };
+  $('#zoomIn').onclick = () => zoomStep(1.25);
+  $('#zoomOut').onclick = () => zoomStep(1 / 1.25);
+  $('#zoomPct').onclick = () => setCamera({ x: BW / 2, y: BH / 2, z: 1 }, true);
+  $('#zoomAll').onclick = () => setAutoCamera();
 
   // ---------- Selección e interacción en el tablero ----------
   function select(id) {
@@ -521,7 +625,7 @@
     renderToolbar(); renderSide();
   }
   // Coordenadas de pantalla → coordenadas del muro
-  function toSpaceXY(cx, cy) { const r = space.getBoundingClientRect(); return { x: (cx - r.left) / scale, y: (cy - r.top) / scale }; }
+  function toSpaceXY(cx, cy) { const r = space.getBoundingClientRect(); return { x: (cx - r.left) / (scale * cam.z), y: (cy - r.top) / (scale * cam.z) }; }
   const toBoard = (e) => toSpaceXY(e.clientX, e.clientY);
   function nodeCenter(n) { const r = n.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; }
   // Foto que hay debajo del centro de un texto (para anclarlo al soltarlo)
@@ -568,7 +672,15 @@
   board.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const n = e.target.closest('.el');
-    if (!n) { stopEditing(); select(null); return; }
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!n || (action && (action.type === 'pan' || action.type === 'pinch'))) {
+      // Fondo: arrastrar desplaza el muro; dos dedos hacen zoom
+      stopEditing();
+      if (touches.size >= 2 && action) { startPinch(); }
+      else if (!n) action = { type: 'pan', sx: e.clientX, sy: e.clientY, cx: cam.x, cy: cam.y, moved: false };
+      board.setPointerCapture(e.pointerId);
+      return;
+    }
     const id = n.dataset.id, el = getEl(id); if (!el) return;
     if (editingId === id) return; // escribiendo dentro del texto
     stopEditing(); select(id);
@@ -584,9 +696,23 @@
   });
 
   board.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (!action) return;
+    if (action.type === 'pan') {
+      const dx = e.clientX - action.sx, dy = e.clientY - action.sy;
+      if (!action.moved && Math.hypot(dx, dy) < 4) return;
+      action.moved = true;
+      setCamera({ x: action.cx - dx / (scale * cam.z), y: action.cy - dy / (scale * cam.z), z: cam.z });
+      return;
+    }
+    if (action.type === 'pinch') {
+      const [a, b] = [...touches.values()]; if (!b) return;
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      zoomCameraAt(mx, my, action.z0 * d / action.d0, action.anchor);
+      return;
+    }
     const p = toBoard(e), o = action.orig, dx = p.x - action.start.x, dy = p.y - action.start.y;
-    if (!action.moved && Math.hypot(dx, dy) * scale < 3) return;
+    if (!action.moved && Math.hypot(dx, dy) * scale * cam.z < 3) return;
     action.moved = true;
     const el = getEl(action.id); if (!el) return;
     let g;
@@ -619,8 +745,11 @@
     queue(el.id, g);
   });
 
-  const endAction = () => {
+  const endAction = (e) => {
+    if (e && e.pointerId != null) touches.delete(e.pointerId);
     if (!action) return;
+    if (action.type === 'pinch') { if (touches.size === 0) action = null; return; }
+    if (action.type === 'pan') { const a = action; action = null; if (!a.moved) select(null); return; }
     const a = action; action = null; markDrop(null);
     if (a.moved) {
       recent = { id: a.id, geom: a.geom, until: Date.now() + 600 }; flush();
@@ -631,15 +760,16 @@
   board.addEventListener('pointerup', endAction);
   board.addEventListener('pointercancel', endAction);
 
-  // Ctrl + rueda (o pellizco en el trackpad) sobre una foto o texto: cambia su tamaño
+  // Rueda: zoom del muro (lo ve también /pantalla). Ctrl + rueda sobre una foto: cambia el tamaño de esa foto.
   board.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
-    const n = hit && hit.closest('.el'); if (!n) return;
     e.preventDefault();
-    const el = getEl(n.dataset.id); if (!el) return;
-    select(el.id);
-    zoomEl(el, Math.exp(-e.deltaY * 0.004));
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const n = hit && hit.closest('.el');
+    if ((e.ctrlKey || e.metaKey) && n && n.dataset.id === selectedId) {
+      const el = getEl(n.dataset.id); if (el) zoomEl(el, Math.exp(-e.deltaY * 0.004));
+      return;
+    }
+    zoomCameraAt(e.clientX, e.clientY, cam.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
   }, { passive: false });
 
   board.addEventListener('dblclick', (e) => {
@@ -695,8 +825,9 @@
   function toggleMax(el) {
     if (prevGeom.has(el.id)) { const g = prevGeom.get(el.id); prevGeom.delete(el.id); update(el.id, g); renderToolbar(); return; }
     prevGeom.set(el.id, { x: el.x, y: el.y, w: el.w, h: el.h, rot: el.rot || 0 });
-    // Ocupa el área que se ve en todas las pantallas (deja libre la franja del título)
-    const A = { x: 20, y: 100, w: BW - 40, h: BH - 120 }, ratio = el.w / el.h;
+    // Ocupa lo que se ve ahora mismo (deja libre la franja del título) y fija la cámara
+    const z = cam.z, A = { x: cam.x - BW / 2 / z + 20 / z, y: cam.y - BH / 2 / z + 100 / z, w: (BW - 40) / z, h: (BH - 120) / z }, ratio = el.w / el.h;
+    setCamera({ x: cam.x, y: cam.y, z: cam.z });
     let w = A.w, hh = w / ratio; if (hh > A.h) { hh = A.h; w = hh * ratio; }
     socket.emit('front', el.id);
     update(el.id, { x: Math.round(A.x + (A.w - w) / 2), y: Math.round(A.y + (A.h - hh) / 2), w: Math.round(w), h: Math.round(hh), rot: 0 });
@@ -800,6 +931,7 @@
         tbBtn(prevGeom.has(id) ? 'shrink' : 'expand', prevGeom.has(id) ? 'Volver al tamaño anterior' : 'Ampliar a toda la pantalla', () => toggleMax(getEl(id)), { label: prevGeom.has(id) ? 'Reducir' : 'Ampliar', on: prevGeom.has(id) }),
         tbSep());
       if (el.kind === 'image') tb.append(tbBtn('edit', 'Editar foto', () => openEditor(id), { label: 'Editar' }));
+      tb.append(tbBtn('focus', 'Acercar el muro a esta foto (también en /pantalla)', () => focusOn(getEl(id)), { label: 'Enfocar' }));
       if (isMedia(el)) tb.append(tbBtn('view', 'Ver en grande', () => openLightbox(id)));
       if (el.kind === 'video' || el.kind === 'audio') {
         tb.append(tbBtn(el.playing ? 'pause' : 'play', el.playing ? 'Pausar' : 'Reproducir', () => update(id, { playing: !el.playing })));

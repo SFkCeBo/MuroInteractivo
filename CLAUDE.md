@@ -12,6 +12,9 @@ App de una presentación en directo: el público escanea un QR y sube archivos d
 - Elemento: `{ id, kind: image|video|audio|pdf|doc|text, status: live|pending, hidden, x, y, w, h, rot, z, file?, author?, message?, showCaption?, text?, style?, parent?, playing?, muted? }`.
 - Coordenadas en un espacio de referencia de **1920×1080** (`#space`). El tablero (`#board`) se estira para llenar la pantalla; esa zona central se ve siempre entera.
 - **Textos anclados**: un texto con `parent` = id de una foto guarda `x, y, rot` relativos a la foto y se dibuja *dentro* del nodo de la foto. Si la foto cambia de anchura, `scaleChildren()` (existe en servidor y cliente, mantenlos iguales) escala posición, ancho y tamaño de letra. Borrar una foto borra sus textos.
+- **Cámara** (`settings.camera`): `{mode:'auto'}` encaja todas las fotos (`autoCamera()`, deja libres la franja del título y la columna del QR) o `{mode:'manual', x, y, z}` (centro en coordenadas del muro y zoom; z=1 = 1920×1080 llena la pantalla). Se aplica como `transform` de `#space` en `applyCamera()`. El panel la cambia con `setCamera()`/`setAutoCamera()` y la envía con el evento ligero `camera` (el servidor la reenvía a los demás sin mandar el estado completo); `/pantalla` la sigue con una transición suave. Mientras se arrastra un elemento la cámara no se recalcula.
+- Las subidas nuevas se colocan con `placeFor()` en el servidor: hueco libre más cercano al centro, ampliando el área si la pantalla está llena.
+- `settings.qrFull` fuerza el QR a pantalla completa; sin archivos visibles (`bigQr`) sale solo.
 - Ediciones de foto: el servidor guarda la nueva imagen en `file.url` y conserva `file.originalUrl`.
 
 ## Convenciones

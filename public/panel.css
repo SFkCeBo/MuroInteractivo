@@ -39,7 +39,18 @@ body.side-closed #main { grid-template-columns: 1fr; }
 body.side-closed #side { display: none; }
 #stageWrap { position: relative; overflow: hidden; min-width: 0; min-height: 0; background: #0c0e11; }
 #board { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; overflow: hidden; --inv: 1; color: #fff; }
-#space { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 2; }
+#space { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 2; transform-origin: 0 0; }
+#space.cam-anim, body.mode-view #space { transition: transform .45s cubic-bezier(.2, .7, .2, 1); }
+body.mode-admin #board { cursor: grab; }
+body.mode-admin #board:active { cursor: grabbing; }
+#qrHero.cover { z-index: 50; }
+body.mode-admin #qrHero.cover { opacity: .93; }
+#zoomUi { position: absolute; left: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 4px; background: #111317e8; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 22px rgba(0,0,0,.4); }
+body.mode-view #zoomUi, body.presenting #zoomUi { display: none; }
+.zbtn { height: 32px; min-width: 32px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.zbtn:hover { background: #2a2e38; }
+.zbtn.pct { min-width: 54px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.zbtn.all.on { background: #3a3220; color: var(--accent); }
 body.mode-view #topbar, body.mode-view #side, body.presenting #topbar, body.presenting #side { display: none; }
 body.mode-view #main, body.presenting #main { grid-template-columns: 1fr; }
 body.mode-view #app, body.presenting #app { grid-template-rows: 1fr; }
@@ -232,6 +243,7 @@ body:not(.feed) .fsbtn { bottom: auto; top: max(14px, env(safe-area-inset-top));
   .btn { flex: none; }
   #toolbar { left: 6px !important; right: 6px; top: auto !important; bottom: max(8px, env(safe-area-inset-bottom)); max-width: none; justify-content: center; }
   body.side-open #toolbar { display: none; }
+  #zoomUi { left: 8px; top: 8px; bottom: auto; }
   #toast { bottom: auto; top: calc(56px + env(safe-area-inset-top)); max-width: 92vw; text-align: center; }
   .hint { display: none; }
   .lb-nav { width: 40px; height: 64px; font-size: 34px; }

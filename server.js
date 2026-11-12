@@ -51,6 +51,8 @@ const defaultState = () => ({
     bigQr: true, // QR a pantalla completa mientras no haya archivos
     background: '#14161b',
     spotlight: '',
+    camera: { mode: 'auto' }, // auto: se ve todo el muro · manual: lo que elige el presentador
+    qrFull: false,            // QR a pantalla completa ahora mismo
   },
   elements: [],
 });
@@ -187,15 +189,33 @@ function kindOf(mime) {
   return 'doc';
 }
 
+// Busca un hueco libre para una foto nueva: primero en la pantalla de referencia y,
+// si ya está llena, en un muro cada vez más grande alrededor (la cámara automática lo mostrará entero).
 function placeFor(w, h) {
-  // Posición aleatoria dentro del tablero, evitando la esquina del QR
-  for (let i = 0; i < 20; i++) {
-    const x = 40 + Math.random() * (BOARD_W - w - 80);
-    const y = 90 + Math.random() * (BOARD_H - h - 130);
-    const hitsQr = x + w > BOARD_W - 330 && y + h > BOARD_H - 360;
-    if (!hitsQr) return { x, y };
+  const roots = state.elements.filter((e) => e.status === 'live' && !e.hidden && !e.parent && e.kind !== 'text');
+  const M = 18; // separación mínima
+  const free = (x, y) => {
+    if (x < BOARD_W - 340 && x + w > BOARD_W - 360 && y + h > BOARD_H - 380 && y < BOARD_H) return false; // esquina del QR
+    for (const o of roots) {
+      if (x < o.x + o.w + M && x + w + M > o.x && y < o.y + o.h + M && y + h + M > o.y) return false;
+    }
+    return true;
+  };
+  const cx = BOARD_W / 2, cy = BOARD_H / 2 + 40;
+  for (const f of [1, 1.35, 1.8, 2.4, 3.2, 4.2, 5.5, 7]) {
+    const W = BOARD_W * f, H = BOARD_H * f, x0 = cx - W / 2, y0 = (f === 1 ? 100 : cy - H / 2), y1 = cy + H / 2;
+    const cands = [];
+    const step = 30 * f;
+    for (let x = x0 + 30; x + w <= x0 + W - 30; x += step) {
+      for (let y = y0; y + h <= y1 - 30; y += step) cands.push([x, y, Math.hypot(x + w / 2 - cx, (y + h / 2 - cy) * 1.6)]);
+    }
+    cands.sort((a, b) => a[2] - b[2]);
+    // Un poco de azar entre los mejores huecos para que no quede todo en fila
+    const ok = [];
+    for (const c of cands) { if (free(c[0], c[1])) { ok.push(c); if (ok.length >= 6) break; } }
+    if (ok.length) { const c = ok[Math.floor(Math.random() * ok.length)]; return { x: c[0], y: c[1] }; }
   }
-  return { x: 60, y: 100 };
+  return { x: 60 + Math.random() * 400, y: 100 + Math.random() * 300 };
 }
 
 app.post('/api/upload', (req, res) => {
@@ -316,6 +336,17 @@ io.on('connection', (socket) => {
     broadcast();
   });
 
+  // Cámara (zoom y desplazamiento): mensaje ligero, no reenvía todo el estado
+  socket.on('camera', (c) => {
+    if (!c || typeof c !== 'object') return;
+    const cam = c.mode === 'manual'
+      ? { mode: 'manual', x: clamp(num(c.x, BOARD_W / 2), -50000, 50000), y: clamp(num(c.y, BOARD_H / 2), -50000, 50000), z: clamp(num(c.z, 1), 0.03, 12) }
+      : { mode: 'auto' };
+    state.settings.camera = cam;
+    socket.broadcast.emit('camera', cam);
+    save();
+  });
+
   socket.on('front', (id) => { const el = find(id); if (el) { el.z = maxZ() + 1; broadcast(); } });
   socket.on('back', (id) => {
     const el = find(id); if (!el) return;
@@ -383,6 +414,7 @@ io.on('connection', (socket) => {
     if ('bigQr' in patch) s.bigQr = Boolean(patch.bigQr);
     if ('background' in patch) s.background = str(patch.background, 30);
     if ('spotlight' in patch) s.spotlight = str(patch.spotlight, 40);
+    if ('qrFull' in patch) s.qrFull = Boolean(patch.qrFull);
     broadcast();
   });
 

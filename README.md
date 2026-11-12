@@ -16,7 +16,7 @@ El público escanea un QR y sube fotos, vídeos, audio, PDF o documentos desde e
 2. Escribe el PIN que quieras para tu panel en `ADMIN_PIN` y pulsa *Deploy*.
 3. En unos minutos tendrás una dirección `https://muro-interactivo-xxxx.onrender.com`. El QR la usa automáticamente; tu panel está en `/panel`.
 
-Ten en cuenta dos cosas del plan gratuito:
+El `render.yaml` del repositorio ya usa el plan **Starter** con un disco de 1 GB (las fotos sobreviven a reinicios). Para usarlo gratis, cambia `plan: starter` por `plan: free` y quita el disco y `DATA_DIR`. Ten en cuenta dos cosas del plan gratuito:
 - **Se duerme tras 15 minutos sin visitas** y tarda unos 50 segundos en despertar. Abre `/panel` y `/pantalla` unos minutos antes de empezar y déjalas abiertas.
 - **No guarda archivos al reiniciarse ni al dormirse.** Para una sesión en directo basta, pero descarga lo que quieras conservar. Si necesitas que se guarde, cambia a un plan de pago con disco (instrucciones en `render.yaml`).
 

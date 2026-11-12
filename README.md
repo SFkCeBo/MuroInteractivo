@@ -60,6 +60,7 @@ PUBLIC_URL=https://algo.trycloudflare.com ADMIN_PIN=2468 npm start
 - **Cambiar o borrar un texto:** doble clic sobre él (o *Editar* en la barra flotante) y escribe; Esc para terminar. *Eliminar* o Supr lo borra, y si lo dejas vacío también se borra. La barra flotante cambia color, fondo, tamaño, alineación y tipo de letra.
 - **Editar foto:** doble clic → *Editar* (o botón *Editar* de la barra flotante): estilos rápidos, brillo, contraste, saturación, calidez, B/N, sepia, tono, desenfoque, girar, voltear y recortar (libre, 1:1, 4:3, 16:9, 4:5). El original se conserva y puedes volver a él.
 - **Destacar:** doble clic en una foto abre el visor; *Destacar en pantalla* la muestra a pantalla completa en `/pantalla`. Con ← → pasas a la siguiente y el proyector la sigue.
+- **QR grande:** mientras no haya ningún archivo en el muro, el QR se muestra a pantalla completa con el título, en el proyector y en el móvil. En cuanto llega el primer archivo pasa a su esquina, y si ocultas o borras todos vuelve a crecer. Se activa o desactiva con el botón *QR grande* del panel (activado por defecto); el botón *QR* controla el de la esquina.
 - **Moderar:** con *Moderar* activado, lo que llega espera en la pestaña *Pendiente* hasta que lo apruebes.
 - **Ocultar** (ojo) quita algo del proyector sin borrarlo; en tu panel queda semitransparente.
 - **Cuadrícula / Collage** ordenan todo de golpe. *Subidas* abre o cierra la recepción.

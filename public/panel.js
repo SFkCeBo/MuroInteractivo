@@ -118,8 +118,9 @@
   }
 
   fetch('/api/info').then((r) => r.json()).then((info) => {
-    $('#qrImg').src = info.qr;
-    $('#qrUrl').textContent = info.uploadUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const shortUrl = info.uploadUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    for (const id of ['#qrImg', '#heroImg', '#feedQr']) $(id).src = info.qr;
+    for (const id of ['#qrUrl', '#heroUrl', '#feedUrl']) $(id).textContent = shortUrl;
   }).catch(() => {});
 
   // Envío de cambios agrupado (evita saturar la red al arrastrar)
@@ -180,7 +181,13 @@
     board.style.background = s.background || '#14161b';
     board.style.color = luminance(s.background) > 0.45 ? '#15171b' : '#ffffff';
     $('#boardTitle').textContent = s.title || '';
-    $('#qrBox').hidden = !s.showQr;
+    // Sin archivos en el muro: QR a pantalla completa (si está activado)
+    const files = state.elements.filter((e) => e.status === 'live' && !e.hidden && e.kind !== 'text').length;
+    const hero = s.bigQr !== false && files === 0;
+    $('#qrHero').hidden = !hero;
+    $('#heroTitle').textContent = s.title || '';
+    $('#boardTitle').hidden = hero;
+    $('#qrBox').hidden = !s.showQr || hero;
 
     const live = state.elements.filter((e) => e.status === 'live' && (MODE === 'admin' || !e.hidden));
     const seen = new Set();
@@ -216,7 +223,7 @@
       if (!known.has(e.id)) { known.add(e.id); if (initialized && e.kind !== 'text') arrivals++; }
     }
     if (selectedId && !getEl(selectedId)) selectedId = null;
-    $('#empty').hidden = live.length > 0;
+    $('#empty').hidden = live.length > 0 || hero;
 
     if (MODE === 'admin') {
       if (arrivals) toast(arrivals === 1 ? 'Ha llegado un archivo nuevo' : `Han llegado ${arrivals} archivos nuevos`);
@@ -345,7 +352,10 @@
       fillCard(card, el, W);
     });
     for (const [id, c] of feedCards) if (!seen.has(id)) { c.remove(); feedCards.delete(id); }
-    $('#feedEmpty').hidden = roots.length > 0;
+    const hero = s.bigQr !== false && !roots.some((e) => e.kind !== 'text');
+    $('#feedEmpty').hidden = roots.length > 0 && !hero;
+    $('#feedEmpty').classList.toggle('is-hero', hero);
+    $('#feedTitle').classList.toggle('is-hero', hero);
   }
   function fillCard(card, el, W) {
     card.classList.toggle('is-text', el.kind === 'text');
@@ -415,6 +425,7 @@
     const ti = $('#titleInput'); if (document.activeElement !== ti) ti.value = s.title || '';
     const bg = $('#bgInput'); if (document.activeElement !== bg) bg.value = /^#[0-9a-f]{6}$/i.test(s.background) ? s.background : '#14161b';
     $('#qrBtn').classList.toggle('on', Boolean(s.showQr));
+    $('#bigQrBtn').classList.toggle('on', s.bigQr !== false);
     $('#openBtn').classList.toggle('on', Boolean(s.uploadsOpen));
     $('#openBtn').lastChild.textContent = s.uploadsOpen ? 'Subidas' : 'Cerradas';
     $('#openBtn').title = s.uploadsOpen ? 'Subidas abiertas: pulsa para cerrarlas' : 'Subidas cerradas: pulsa para abrirlas';
@@ -431,6 +442,10 @@
   let bgT = null;
   $('#bgInput').addEventListener('input', (e) => { const v = e.target.value; board.style.background = v; clearTimeout(bgT); bgT = setTimeout(() => setting({ background: v }), 120); });
   $('#qrBtn').onclick = () => setting({ showQr: !state.settings.showQr });
+  $('#bigQrBtn').onclick = () => {
+    const on = state.settings.bigQr === false; setting({ bigQr: on });
+    toast(on ? 'El QR se verá a pantalla completa mientras no haya archivos' : 'QR grande desactivado');
+  };
   $('#openBtn').onclick = () => setting({ uploadsOpen: !state.settings.uploadsOpen });
   $('#modBtn').onclick = () => {
     const on = !state.settings.moderation; setting({ moderation: on });

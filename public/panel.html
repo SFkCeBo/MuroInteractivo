@@ -21,7 +21,8 @@
     <button class="btn" id="gridBtn" title="Ordenar en cuadrícula"><i data-i="grid"></i><span class="opt">Cuadrícula</span></button>
     <button class="btn" id="collageBtn" title="Esparcir como collage"><i data-i="collage"></i><span class="opt">Collage</span></button>
     <span class="sep"></span>
-    <button class="btn toggle" id="qrBtn" title="Mostrar el QR en el panel"><i data-i="qr"></i>QR</button>
+    <button class="btn toggle" id="qrBtn" title="Mostrar el QR en una esquina del muro"><i data-i="qr"></i>QR</button>
+    <button class="btn toggle" id="bigQrBtn" title="Mostrar el QR a pantalla completa mientras no haya archivos"><i data-i="expand"></i><span class="opt">QR grande</span></button>
     <button class="btn toggle" id="openBtn" title="Permitir que el público suba archivos"><i data-i="upload"></i>Subidas</button>
     <button class="btn toggle" id="modBtn" title="Revisar cada archivo antes de mostrarlo"><i data-i="shield"></i>Moderar</button>
     <label class="btn colorbtn" title="Color de fondo"><input type="color" id="bgInput" value="#14161b"><span class="opt">Fondo</span></label>
@@ -38,6 +39,12 @@
     <div id="stageWrap">
       <div id="board">
         <div id="boardTitle"></div>
+        <div id="qrHero" hidden>
+          <div class="hero-title" id="heroTitle"></div>
+          <img id="heroImg" alt="Código QR para subir archivos">
+          <div class="hero-sub">Escanea el código con la cámara del móvil para compartir tus fotos</div>
+          <div class="hero-url" id="heroUrl"></div>
+        </div>
         <div id="empty"><div class="big">Escanea el QR para empezar</div><div class="small">Las fotos y archivos aparecerán aquí en directo</div></div>
         <div id="space"></div>
         <div id="qrBox"><img id="qrImg" alt="Código QR para subir archivos"><div class="t">Sube tus fotos</div><div class="u" id="qrUrl"></div></div>
@@ -88,7 +95,7 @@
 
 <!-- Destacado (solo en /pantalla) -->
 <!-- /pantalla en móvil vertical -->
-<div id="feed"><div id="feedTitle"></div><div id="feedEmpty">Escanea el QR para empezar</div><div id="feedList"></div></div>
+<div id="feed"><div id="feedTitle"></div><div id="feedEmpty"><span class="fe-text">Escanea el QR para empezar</span><div class="fe-hero"><img id="feedQr" alt="Código QR para subir archivos"><div class="hero-sub">Escanea el código con la cámara del móvil para compartir tus fotos</div><div class="hero-url" id="feedUrl"></div></div></div><div id="feedList"></div></div>
 <button id="fsBtn" class="fsbtn" hidden title="Pantalla completa" aria-label="Pantalla completa"><i data-i="expand"></i></button>
 <div id="spot" hidden><div class="spot-media" id="spotMedia"></div><div class="cap" id="spotCap"></div></div>
 <div id="soundHint" hidden>Haz clic en cualquier parte para activar el sonido</div>

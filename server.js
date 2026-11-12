@@ -48,6 +48,7 @@ const defaultState = () => ({
     moderation: false,
     uploadsOpen: true,
     showQr: true,
+    bigQr: true, // QR a pantalla completa mientras no haya archivos
     background: '#14161b',
     spotlight: '',
   },
@@ -379,6 +380,7 @@ io.on('connection', (socket) => {
     if ('moderation' in patch) s.moderation = Boolean(patch.moderation);
     if ('uploadsOpen' in patch) s.uploadsOpen = Boolean(patch.uploadsOpen);
     if ('showQr' in patch) s.showQr = Boolean(patch.showQr);
+    if ('bigQr' in patch) s.bigQr = Boolean(patch.bigQr);
     if ('background' in patch) s.background = str(patch.background, 30);
     if ('spotlight' in patch) s.spotlight = str(patch.spotlight, 40);
     broadcast();

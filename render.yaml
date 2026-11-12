@@ -1,0 +1,21 @@
+# Despliegue en Render: https://render.com/deploy
+services:
+  - type: web
+    name: muro-interactivo
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/info
+    envVars:
+      - key: ADMIN_PIN
+        sync: false        # Render te lo pedirá al desplegar
+      - key: NODE_VERSION
+        value: "22"
+    # Para que los archivos sobrevivan a reinicios, cambia a plan: starter y descomenta:
+    # disk:
+    #   name: datos
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # y añade en envVars:  - key: DATA_DIR  value: /var/data

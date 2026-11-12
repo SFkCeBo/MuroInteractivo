@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23ffb84d%22/%3E%3Cpath d=%22M16 22V9M10 14l6-6 6 6%22 stroke=%22%23231a08%22 stroke-width=%223%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
+<title>Comparte tus archivos</title>
+<style>
+  :root { --bg:#14161b; --card:#1d2027; --line:#2c303a; --text:#f2f3f5; --muted:#9aa1ad; --accent:#ffb84d; --accent-ink:#231a08; --ok:#5fd39a; --err:#ff7b72; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:520px; margin:0 auto; padding:max(28px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom)); }
+  h1 { font-size:1.6rem; line-height:1.15; margin:0 0 6px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  label.field { display:block; font-size:.85rem; color:var(--muted); margin:16px 0 6px; }
+  input[type=text], textarea { width:100%; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:13px 14px; font:inherit; outline:none; }
+  input[type=text]:focus, textarea:focus { border-color:var(--accent); }
+  textarea { resize:vertical; min-height:72px; }
+  .pick { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; border:2px dashed var(--line); border-radius:18px; padding:30px 16px; background:var(--card); cursor:pointer; transition:border-color .15s, background .15s; }
+  .pick:hover, .pick.drag { border-color:var(--accent); background:#232630; }
+  .pick svg { width:42px; height:42px; color:var(--accent); }
+  .pick strong { font-size:1.05rem; }
+  .pick span { color:var(--muted); font-size:.85rem; }
+  #fileInput { display:none; }
+  .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:8px; margin-top:14px; }
+  .thumb { position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; background:#262a33; display:flex; align-items:center; justify-content:center; font-size:.72rem; color:var(--muted); text-align:center; padding:6px; word-break:break-word; }
+  .thumb img, .thumb video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .thumb button { position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:50%; border:0; background:rgba(0,0,0,.65); color:#fff; font-size:15px; line-height:1; cursor:pointer; }
+  .send { width:100%; margin-top:22px; padding:16px; border:0; border-radius:14px; background:var(--accent); color:var(--accent-ink); font:600 1.05rem/1 inherit; cursor:pointer; }
+  .send:disabled { opacity:.45; cursor:default; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:14px; display:none; }
+  .bar i { display:block; height:100%; width:0; background:var(--accent); transition:width .15s; }
+  .msg { margin-top:12px; min-height:1.4em; font-size:.92rem; }
+  .msg.err { color:var(--err); }
+  .done { display:none; text-align:center; padding:40px 0 10px; }
+  .done .check { width:76px; height:76px; border-radius:50%; background:rgba(95,211,154,.15); color:var(--ok); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; }
+  .done h2 { margin:0 0 6px; }
+  .done p { color:var(--muted); margin:0 0 24px; }
+  .ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  .closed { display:none; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Comparte tus fotos y archivos</h1>
+  <p class="sub" id="subtitle">Aparecerán en la pantalla de la presentación.</p>
+
+  <div class="closed" id="closed">Las subidas están cerradas en este momento. Vuelve a intentarlo en un rato.</div>
+
+  <form id="form">
+    <label class="pick" id="pick" for="fileInput">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <strong>Elegir fotos o archivos</strong>
+      <span id="limits">Fotos, vídeos, audio, PDF y documentos · hasta 10 a la vez</span>
+    </label>
+    <input id="fileInput" type="file" multiple accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip">
+    <div class="thumbs" id="thumbs"></div>
+
+    <label class="field" for="author">Tu nombre (opcional)</label>
+    <input type="text" id="author" maxlength="60" autocomplete="name" placeholder="Cómo quieres aparecer">
+
+    <label class="field" for="message">Mensaje (opcional)</label>
+    <textarea id="message" maxlength="280" placeholder="Un comentario para acompañar lo que subes"></textarea>
+
+    <button class="send" id="send" type="submit" disabled>Enviar</button>
+    <div class="bar" id="bar"><i></i></div>
+    <div class="msg" id="msg" role="status"></div>
+  </form>
+
+  <section class="done" id="done">
+    <div class="check"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+    <h2>¡Recibido!</h2>
+    <p id="doneText">Mira la pantalla: ya debería aparecer.</p>
+    <button class="send ghost" id="again" type="button">Enviar más</button>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const input = $('fileInput'), thumbs = $('thumbs'), send = $('send'), msg = $('msg'), bar = $('bar');
+  let files = [];
+  let maxMb = 50;
+
+  try { $('author').value = localStorage.getItem('pv-author') || ''; } catch {}
+
+  fetch('/api/info').then((r) => r.json()).then((info) => {
+    $('title').textContent = info.title || $('title').textContent;
+    document.title = info.title || document.title;
+    if (info.subtitle) $('subtitle').textContent = info.subtitle;
+    maxMb = info.maxFileMb || 50;
+    $('limits').textContent = `Fotos, vídeos, audio, PDF y documentos · hasta 10 a la vez · máx. ${maxMb} MB cada uno`;
+    if (!info.uploadsOpen) { $('closed').style.display = 'block'; $('form').style.display = 'none'; }
+  }).catch(() => {});
+
+  function setMsg(text, err) { msg.textContent = text; msg.className = 'msg' + (err ? ' err' : ''); }
+
+  function render() {
+    thumbs.innerHTML = '';
+    files.forEach((f, i) => {
+      const d = document.createElement('div'); d.className = 'thumb';
+      if (f.type.startsWith('image/') && !/hei[cf]/.test(f.type)) {
+        const img = document.createElement('img'); img.src = URL.createObjectURL(f); d.appendChild(img);
+      } else if (f.type.startsWith('video/')) {
+        const v = document.createElement('video'); v.src = URL.createObjectURL(f) + '#t=0.1'; v.muted = true; v.playsInline = true; d.appendChild(v);
+      } else { d.textContent = f.name; }
+      const x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Quitar');
+      x.onclick = (e) => { e.preventDefault(); files.splice(i, 1); render(); };
+      d.appendChild(x); thumbs.appendChild(d);
+    });
+    send.disabled = files.length === 0;
+    send.textContent = files.length > 1 ? `Enviar ${files.length} archivos` : 'Enviar';
+  }
+
+  function add(list) {
+    setMsg('');
+    for (const f of list) {
+      if (files.length >= 10) { setMsg('Máximo 10 archivos por envío.', true); break; }
+      if (f.size > maxMb * 1024 * 1024) { setMsg(`"${f.name}" supera ${maxMb} MB y no se enviará.`, true); continue; }
+      files.push(f);
+    }
+    render();
+  }
+
+  input.addEventListener('change', () => { add(input.files); input.value = ''; });
+  const pick = $('pick');
+  ['dragenter', 'dragover'].forEach((ev) => pick.addEventListener(ev, (e) => { e.preventDefault(); pick.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach((ev) => pick.addEventListener(ev, (e) => { e.preventDefault(); pick.classList.remove('drag'); }));
+  pick.addEventListener('drop', (e) => add(e.dataTransfer.files));
+
+  // Reduce fotos grandes antes de subirlas (más rápido con el wifi del evento)
+  function loadImage(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(file);
+    });
+  }
+  async function prepare(file) {
+    if (/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      try {
+        const img = await loadImage(file);
+        let w = img.naturalWidth, h = img.naturalHeight;
+        const MAX = 2560;
+        if (Math.max(w, h) > MAX || file.size > 3 * 1024 * 1024) {
+          const s = Math.min(1, MAX / Math.max(w, h));
+          w = Math.round(w * s); h = Math.round(h * s);
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const blob = await new Promise((r) => c.toBlob(r, type, 0.88));
+          if (blob && blob.size < file.size) {
+            const name = file.name.replace(/\.\w+$/, '') + (type === 'image/png' ? '.png' : '.jpg');
+            return { file: new File([blob], name, { type }), dims: { w, h } };
+          }
+        }
+        return { file, dims: { w, h } };
+      } catch { return { file, dims: null }; }
+    }
+    if (/^image\//.test(file.type)) {
+      try { const img = await loadImage(file); return { file, dims: { w: img.naturalWidth, h: img.naturalHeight } }; } catch { return { file, dims: null }; }
+    }
+    if (file.type.startsWith('video/')) {
+      const dims = await new Promise((res) => {
+        const v = document.createElement('video'); const t = setTimeout(() => res(null), 3000);
+        v.preload = 'metadata'; v.onloadedmetadata = () => { clearTimeout(t); res({ w: v.videoWidth, h: v.videoHeight }); };
+        v.onerror = () => { clearTimeout(t); res(null); }; v.src = URL.createObjectURL(file);
+      });
+      return { file, dims };
+    }
+    return { file, dims: null };
+  }
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!files.length) return;
+    send.disabled = true; setMsg('Preparando…');
+    const author = $('author').value.trim();
+    try { localStorage.setItem('pv-author', author); } catch {}
+    const prepared = [];
+    for (const f of files) prepared.push(await prepare(f));
+    const fd = new FormData();
+    prepared.forEach((p) => fd.append('files', p.file, p.file.name));
+    fd.append('dims', JSON.stringify(prepared.map((p) => p.dims)));
+    fd.append('author', author);
+    fd.append('message', $('message').value.trim());
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    bar.style.display = 'block'; bar.firstElementChild.style.width = '0';
+    setMsg('Subiendo…');
+    xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) bar.firstElementChild.style.width = (ev.loaded / ev.total * 100) + '%'; };
+    xhr.onload = () => {
+      bar.style.display = 'none';
+      let data = {}; try { data = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status === 200 && data.ok) {
+        files = []; render(); $('message').value = ''; setMsg('');
+        $('doneText').textContent = data.moderated
+          ? 'El presentador lo revisará antes de mostrarlo en pantalla.'
+          : 'Mira la pantalla: ya debería aparecer.';
+        $('form').style.display = 'none'; $('done').style.display = 'block';
+      } else {
+        send.disabled = false; setMsg(data.error || 'No se pudo enviar. Inténtalo de nuevo.', true);
+      }
+    };
+    xhr.onerror = () => { bar.style.display = 'none'; send.disabled = false; setMsg('Sin conexión. Comprueba la red e inténtalo de nuevo.', true); };
+    xhr.send(fd);
+  });
+
+  $('again').onclick = () => { $('done').style.display = 'none'; $('form').style.display = 'block'; };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23ffb84d%22/%3E%3Cpath d=%22M16 22V9M10 14l6-6 6 6%22 stroke=%22%23231a08%22 stroke-width=%223%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
+<title>Panel en vivo</title>
+<link rel="stylesheet" href="/panel.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <span id="conn" class="conn" title="Conexión"></span>
+    <input id="titleInput" maxlength="120" aria-label="Título del panel" placeholder="Título que verá el público">
+    <span class="sep"></span>
+    <button class="btn primary" id="addText" title="Añadir texto (encima de la foto seleccionada)"><i data-i="text"></i>Texto</button>
+    <button class="btn" id="gridBtn" title="Ordenar en cuadrícula"><i data-i="grid"></i><span class="opt">Cuadrícula</span></button>
+    <button class="btn" id="collageBtn" title="Esparcir como collage"><i data-i="collage"></i><span class="opt">Collage</span></button>
+    <span class="sep"></span>
+    <button class="btn toggle" id="qrBtn" title="Mostrar el QR en el panel"><i data-i="qr"></i>QR</button>
+    <button class="btn toggle" id="openBtn" title="Permitir que el público suba archivos"><i data-i="upload"></i>Subidas</button>
+    <button class="btn toggle" id="modBtn" title="Revisar cada archivo antes de mostrarlo"><i data-i="shield"></i>Moderar</button>
+    <label class="btn colorbtn" title="Color de fondo"><input type="color" id="bgInput" value="#14161b"><span class="opt">Fondo</span></label>
+    <button class="btn on" id="spotStop" hidden title="Quitar la foto destacada de la pantalla"><i data-i="close"></i>Quitar destacado</button>
+    <span class="spacer"></span>
+    <span id="counter" class="counter"></span>
+    <a class="btn" href="/pantalla" target="_blank" rel="noopener" title="Vista limpia para el proyector"><i data-i="screen"></i><span class="opt">Pantalla</span></a>
+    <button class="btn" id="presentBtn" title="Pantalla completa sin controles"><i data-i="expand"></i><span class="opt">Presentar</span></button>
+    <button class="btn icon danger" id="clearBtn" title="Vaciar el panel"><i data-i="trash"></i></button>
+    <button class="btn icon" id="sideBtn" title="Mostrar u ocultar la lista"><i data-i="side"></i></button>
+  </header>
+
+  <div id="main">
+    <div id="stageWrap">
+      <div id="board">
+        <div id="boardTitle"></div>
+        <div id="empty"><div class="big">Escanea el QR para empezar</div><div class="small">Las fotos y archivos aparecerán aquí en directo</div></div>
+        <div id="qrBox"><img id="qrImg" alt="Código QR para subir archivos"><div class="t">Sube tus fotos</div><div class="u" id="qrUrl"></div></div>
+      </div>
+    </div>
+
+    <aside id="side">
+      <div class="tabs">
+        <button class="tab on" data-tab="all">Recibido <b id="cntAll">0</b></button>
+        <button class="tab" data-tab="pending">Pendiente <b id="cntPending">0</b></button>
+      </div>
+      <div class="side-actions" id="pendingActions" hidden>
+        <button class="sbtn ok" id="approveAll">Aprobar todo</button>
+      </div>
+      <div id="list"></div>
+      <div class="hint">Doble clic: ver o editar · Supr: borrar · Flechas: mover · Mayús + esquina: tamaño libre</div>
+    </aside>
+  </div>
+</div>
+
+<div id="toolbar" hidden></div>
+<div id="toast" hidden></div>
+
+<!-- Acceso -->
+<div class="overlay" id="login" hidden>
+  <form class="card login" id="loginForm">
+    <h2>Panel del presentador</h2>
+    <p>Introduce el PIN que aparece en la consola del servidor.</p>
+    <input id="pinInput" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary wide" type="submit">Entrar</button>
+  </form>
+</div>
+
+<!-- Visor -->
+<div class="overlay" id="lightbox" hidden>
+  <button class="lb-x btn icon" id="lbClose" title="Cerrar (Esc)"><i data-i="close"></i></button>
+  <button class="lb-nav prev" id="lbPrev" title="Anterior (←)">‹</button>
+  <div class="lb-media" id="lbMedia"></div>
+  <button class="lb-nav next" id="lbNext" title="Siguiente (→)">›</button>
+  <div class="lb-bar">
+    <div class="lb-cap" id="lbCap"></div>
+    <span class="lb-count" id="lbCount"></span>
+    <button class="btn toggle" id="lbProject" title="Mostrar esta foto en grande en /pantalla"><i data-i="screen"></i>Destacar en pantalla</button>
+    <button class="btn" id="lbEdit"><i data-i="edit"></i>Editar</button>
+  </div>
+</div>
+
+<!-- Destacado (solo en /pantalla) -->
+<div id="spot" hidden><div class="spot-media" id="spotMedia"></div><div class="cap" id="spotCap"></div></div>
+<div id="soundHint" hidden>Haz clic en cualquier parte para activar el sonido</div>
+
+<!-- Editor de fotos -->
+<div class="overlay" id="editor" hidden>
+  <div class="editor">
+    <div class="ed-stage" id="edStage"><canvas id="edCanvas"></canvas></div>
+    <div class="ed-side">
+      <div class="ed-scroll">
+      <h3>Editar foto</h3>
+      <div class="ed-group">
+        <div class="ed-label">Estilos rápidos</div>
+        <div class="presets" id="edPresets"></div>
+      </div>
+      <div class="ed-group" id="edSliders"></div>
+      <div class="ed-note" id="edNote" hidden>Este navegador no aplica filtros de color. Para eso usa Chrome, Edge o Firefox; girar y recortar sí funcionan.</div>
+      <div class="ed-group">
+        <div class="ed-label">Girar y voltear</div>
+        <div class="row">
+          <button class="btn icon" id="edRotL" title="Girar a la izquierda"><i data-i="rotl"></i></button>
+          <button class="btn icon" id="edRotR" title="Girar a la derecha"><i data-i="rotr"></i></button>
+          <button class="btn icon" id="edFlip" title="Voltear horizontal"><i data-i="flip"></i></button>
+        </div>
+      </div>
+      <div class="ed-group">
+        <div class="ed-label">Recortar</div>
+        <div class="row">
+          <button class="btn toggle" id="edCrop"><i data-i="crop"></i>Recortar</button>
+          <select id="edRatio" class="sel" aria-label="Proporción del recorte">
+            <option value="0">Libre</option><option value="1">1:1</option><option value="1.3333">4:3</option><option value="1.7778">16:9</option><option value="0.8">4:5</option>
+          </select>
+          <button class="btn" id="edCropClear">Quitar</button>
+        </div>
+        <div class="ed-tip">Activa «Recortar» y arrastra sobre la foto. Arrastra dentro del recuadro para moverlo.</div>
+      </div>
+      <div class="ed-group">
+        <div class="ed-label">Deshacer</div>
+        <div class="row">
+          <button class="btn" id="edReset" title="Quitar los ajustes de esta sesión">Restablecer</button>
+          <button class="btn" id="edOriginal" title="Volver a la foto tal como la subieron">Volver al original</button>
+        </div>
+      </div>
+      </div>
+      <div class="ed-foot">
+        <button class="btn" id="edCancel">Cancelar</button>
+        <button class="btn primary" id="edSave">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/panel.js"></script>
+</body>
+</html>

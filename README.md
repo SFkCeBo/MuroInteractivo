@@ -1,0 +1,70 @@
+# Muro Interactivo
+
+El público escanea un QR y sube fotos, vídeos, audio, PDF o documentos desde el móvil, sin registrarse. Todo aparece al momento en un panel que tú controlas: mueves, giras y redimensionas, pones texto encima, editas las fotos y eliges qué se ve.
+
+| Dirección   | Para quién | Qué hace |
+|-------------|------------|----------|
+| `/`         | Público (es la del QR) | Subir archivos con nombre y mensaje opcionales |
+| `/panel`    | Tú (con PIN) | Gestionar, editar y anotar |
+| `/pantalla` | Proyector | Vista limpia que se actualiza sola |
+
+## Publicar en internet (Render)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/SFkCeBo/MuroInteractivo)
+
+1. Pulsa el botón e inicia sesión en Render (gratis, puedes entrar con GitHub).
+2. Escribe el PIN que quieras para tu panel en `ADMIN_PIN` y pulsa *Deploy*.
+3. En unos minutos tendrás una dirección `https://muro-interactivo-xxxx.onrender.com`. El QR la usa automáticamente; tu panel está en `/panel`.
+
+Ten en cuenta dos cosas del plan gratuito:
+- **Se duerme tras 15 minutos sin visitas** y tarda unos 50 segundos en despertar. Abre `/panel` y `/pantalla` unos minutos antes de empezar y déjalas abiertas.
+- **No guarda archivos al reiniciarse ni al dormirse.** Para una sesión en directo basta, pero descarga lo que quieras conservar. Si necesitas que se guarde, cambia a un plan de pago con disco (instrucciones en `render.yaml`).
+
+## Arrancar
+
+Necesitas [Node.js](https://nodejs.org) 18 o superior.
+
+```bash
+npm install
+ADMIN_PIN=2468 npm start        # en Windows (PowerShell): $env:ADMIN_PIN=2468; npm start
+```
+
+La consola muestra las tres direcciones y el PIN. Si no fijas `ADMIN_PIN`, se genera uno al azar cada vez.
+
+## Cómo hacer que el público llegue
+
+**Opción A: misma wifi (lo más rápido).** Tu portátil y los móviles del público en la misma red. El QR apunta solo a la IP local de tu portátil (p. ej. `http://192.168.1.20:3000`). Algunas wifis de eventos o universidades aíslan los dispositivos entre sí; si los móviles no cargan la página, usa la opción B.
+
+**Opción B: túnel público (funciona con datos móviles).** Deja el servidor corriendo en tu portátil y abre un túnel gratuito:
+
+```bash
+# Cloudflare (sin cuenta): https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+cloudflared tunnel --url http://localhost:3000
+```
+
+Te dará una dirección `https://algo.trycloudflare.com`. Reinicia el servidor indicándola para que el QR la use:
+
+```bash
+PUBLIC_URL=https://algo.trycloudflare.com ADMIN_PIN=2468 npm start
+```
+
+**Opción C: alojarlo en internet** (Render, Railway, Fly.io o un VPS). Es una app Node normal: comando `npm start`, variables `ADMIN_PIN` y `PUBLIC_URL`. Ojo: en los planes gratuitos el disco suele borrarse al reiniciar. Para guardar los archivos, monta un disco persistente y apunta `DATA_DIR` a él.
+
+## En la presentación
+
+- **Proyector:** abre `/pantalla` en el ordenador conectado al proyector y pulsa F11. O proyecta tu propio `/panel` y usa el botón *Presentar*, que oculta los controles.
+- **Texto encima de una foto:** selecciona la foto y pulsa *Texto*. Escribe directamente; Esc para terminar. Con la barra flotante cambias color, fondo, tamaño, alineación y tipo de letra. La esquina del texto lo escala.
+- **Editar foto:** doble clic → *Editar* (o botón *Editar* de la barra flotante): estilos rápidos, brillo, contraste, saturación, calidez, B/N, sepia, tono, desenfoque, girar, voltear y recortar (libre, 1:1, 4:3, 16:9, 4:5). El original se conserva y puedes volver a él.
+- **Destacar:** doble clic en una foto abre el visor; *Destacar en pantalla* la muestra a pantalla completa en `/pantalla`. Con ← → pasas a la siguiente y el proyector la sigue.
+- **Moderar:** con *Moderar* activado, lo que llega espera en la pestaña *Pendiente* hasta que lo apruebes.
+- **Ocultar** (ojo) quita algo del proyector sin borrarlo; en tu panel queda semitransparente.
+- **Cuadrícula / Collage** ordenan todo de golpe. *Subidas* abre o cierra la recepción.
+- Atajos: Supr borra, flechas mueven (Mayús = más), Mayús + esquina cambia el tamaño sin mantener la proporción, Mayús al girar ajusta de 15 en 15°.
+
+## Datos y límites
+
+- Todo se guarda en `data/` (`state.json` + `uploads/`). Si reinicias, el panel sigue igual. Para empezar de cero: botón de papelera o borra `data/`.
+- Hasta 10 archivos por envío, 50 MB por archivo (`MAX_FILE_MB` para cambiarlo) y 40 archivos por persona cada 10 minutos.
+- Las fotos grandes se reducen en el propio móvil antes de subirlas (máx. 2560 px) para ir rápido con wifi saturada.
+- Las fotos HEIC de iPhone se convierten casi siempre a JPG al subirlas. Si alguna llega como HEIC, solo se verá en Safari.
+- Los filtros de color del editor necesitan Chrome, Edge o Firefox. Girar, recortar y calidez funcionan en cualquier navegador.

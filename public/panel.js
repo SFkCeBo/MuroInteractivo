@@ -10,6 +10,7 @@
 
   let state = { settings: {}, elements: [] };
   let socket = null, pin = null, scale = 1, initialized = false;
+  let screenSize = null, lastSent = '', sendT = null; // tamaño de la ventana del proyector
   let selectedId = null, editingId = null, action = null, recent = null;
   const nodes = new Map();
   const known = new Set();
@@ -111,6 +112,8 @@
     socket.on('connect', () => $('#conn').classList.add('on'));
     socket.on('disconnect', () => $('#conn').classList.remove('on'));
     socket.on('state', (s) => { state = s; render(); });
+    socket.on('screen', (sz) => { screenSize = sz; fit(); });
+    if (MODE === 'view') socket.on('connect', () => { lastSent = ''; reportScreen(); });
     socket.on('auth-error', () => {
       try { sessionStorage.removeItem('pv-pin'); } catch {}
       showLogin('PIN incorrecto');
@@ -153,17 +156,36 @@
   const frameRot = (el) => { const p = parentOf(el); return p ? (p.rot || 0) : 0; };
 
   // ---------- Escala del tablero ----------
+  // /pantalla llena su ventana y le cuenta al servidor qué tamaño tiene. El panel dibuja
+  // el tablero con esa misma proporción, para que se vea exactamente lo mismo que en el proyector.
+  function reportScreen() {
+    if (MODE !== 'view' || !socket || document.body.classList.contains('feed')) return;
+    const r = wrap.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const key = Math.round(r.width) + 'x' + Math.round(r.height);
+    if (key === lastSent) return;
+    clearTimeout(sendT);
+    sendT = setTimeout(() => { lastSent = key; socket.emit('screen', { w: r.width, h: r.height }); }, 150);
+  }
   function fit() {
     const r = wrap.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    scale = Math.max(0.05, Math.min(r.width / BW, r.height / BH));
-    view.w = r.width / scale; view.h = r.height / scale;
+    // Proporción objetivo: la ventana propia en /pantalla y al presentar; la del proyector en el panel
+    const own = MODE === 'view' || document.body.classList.contains('presenting');
+    const sz = own ? r : (screenSize || { width: BW, height: BH, w: BW, h: BH });
+    const a = (sz.width || sz.w) / (sz.height || sz.h);
+    const vw = a >= BW / BH ? BH * a : BW, vh = a >= BW / BH ? BH : BW / a;
+    scale = Math.max(0.05, Math.min(r.width / vw, r.height / vh));
+    view.w = vw; view.h = vh;
     view.ox = (view.w - BW) / 2; view.oy = (view.h - BH) / 2;
+    board.style.left = Math.round((r.width - vw * scale) / 2) + 'px';
+    board.style.top = Math.round((r.height - vh * scale) / 2) + 'px';
     board.style.width = view.w + 'px'; board.style.height = view.h + 'px';
     board.style.transform = `scale(${scale})`;
     space.style.left = view.ox + 'px'; space.style.top = view.oy + 'px';
     board.style.setProperty('--inv', String(1 / scale));
     if (MODE === 'admin') renderToolbar(true);
+    reportScreen();
   }
   new ResizeObserver(fit).observe(wrap);
   window.addEventListener('resize', fit);
@@ -384,7 +406,7 @@
 
   if (MODE === 'view') {
     let rT = null;
-    window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(renderFeed, 80); });
+    window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { renderFeed(); reportScreen(); }, 80); });
     // Botón de pantalla completa (se esconde solo)
     const fs = $('#fsBtn');
     const canFs = Boolean(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);

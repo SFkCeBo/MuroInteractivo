@@ -104,6 +104,9 @@ app.set('trust proxy', true);
 const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 1e6 });
 
+// Tamaño de la ventana del proyector (/pantalla), para que el panel muestre el mismo recorte
+let screenSize = null;
+
 function broadcast() {
   io.to('admin').emit('state', state);
   io.to('viewer').emit('state', publicState());
@@ -272,9 +275,18 @@ io.on('connection', (socket) => {
     if (!isAdmin(pin)) { socket.emit('auth-error'); return socket.disconnect(true); }
     socket.join('admin');
     socket.emit('state', state);
+    socket.emit('screen', screenSize);
   } else {
     socket.join('viewer');
     socket.emit('state', publicState());
+    socket.on('screen', (size = {}) => {
+      const w = num(size && size.w, 0), h = num(size && size.h, 0);
+      if (!(w >= 200 && h >= 200 && w <= 20000 && h <= 20000)) return;
+      const next = { w: Math.round(w), h: Math.round(h) };
+      if (screenSize && screenSize.w === next.w && screenSize.h === next.h) return;
+      screenSize = next;
+      io.to('admin').emit('screen', screenSize);
+    });
     return;
   }
 

@@ -10,7 +10,7 @@ App de una presentación en directo: el público escanea un QR y sube archivos d
 
 ## Modelo de datos
 - Elemento: `{ id, kind: image|video|audio|pdf|doc|text, status: live|pending, hidden, x, y, w, h, rot, z, file?, author?, message?, showCaption?, text?, style?, parent?, playing?, muted? }`.
-- Coordenadas en un espacio de referencia de **1920×1080** (`#space`). El tablero (`#board`) se estira para llenar la pantalla; esa zona central se ve siempre entera.
+- Coordenadas en un espacio de referencia de **1920×1080** (`#space`). El tablero (`#board`) se estira para llenar la pantalla; esa zona central se ve siempre entera. `/pantalla` envía su tamaño de ventana (`screen`) y el panel dibuja el tablero con esa misma proporción (16:9 si no hay proyector conectado), para que el presentador vea exactamente el mismo recorte.
 - **Textos anclados**: un texto con `parent` = id de una foto guarda `x, y, rot` relativos a la foto y se dibuja *dentro* del nodo de la foto. Si la foto cambia de anchura, `scaleChildren()` (existe en servidor y cliente, mantenlos iguales) escala posición, ancho y tamaño de letra. Borrar una foto borra sus textos.
 - Ediciones de foto: el servidor guarda la nueva imagen en `file.url` y conserva `file.originalUrl`.
 

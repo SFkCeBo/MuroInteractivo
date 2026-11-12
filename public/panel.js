@@ -588,12 +588,15 @@
     applyCamera(); socket.emit('camera', { mode: 'auto' });
   }
   // Zoom manteniendo fijo el punto bajo el cursor (o los dedos)
-  function zoomCameraAt(clientX, clientY, z, anchor) {
+  // center (0–1): cuánto se acerca el punto al centro de la vista en este paso
+  function zoomCameraAt(clientX, clientY, z, anchor, center = 0) {
     z = Math.min(12, Math.max(0.03, z));
     const p = anchor || toSpaceXY(clientX, clientY);
     const r = board.getBoundingClientRect();
     const bx = (clientX - r.left) / scale, by = (clientY - r.top) / scale;
-    setCamera({ x: p.x - (bx - view.w / 2) / z, y: p.y - (by - view.h / 2) / z, z });
+    let x = p.x - (bx - view.w / 2) / z, y = p.y - (by - view.h / 2) / z;
+    if (center > 0) { x += (p.x - x) * center; y += (p.y - y) * center; }
+    setCamera({ x, y, z });
   }
   function startPinch() {
     const [a, b] = [...touches.values()];
@@ -708,7 +711,8 @@
     if (action.type === 'pinch') {
       const [a, b] = [...touches.values()]; if (!b) return;
       const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      zoomCameraAt(mx, my, action.z0 * d / action.d0, action.anchor);
+      const z = action.z0 * d / action.d0;
+      zoomCameraAt(mx, my, z, action.anchor);
       return;
     }
     const p = toBoard(e), o = action.orig, dx = p.x - action.start.x, dy = p.y - action.start.y;
@@ -760,16 +764,21 @@
   board.addEventListener('pointerup', endAction);
   board.addEventListener('pointercancel', endAction);
 
-  // Rueda: zoom del muro (lo ve también /pantalla). Ctrl + rueda sobre una foto: cambia el tamaño de esa foto.
+  // Rueda o pellizco del trackpad: siempre zoom del muro (nunca cambia el tamaño de una foto),
+  // hacia donde apunta el cursor; al acercar, esa zona se va centrando (también en /pantalla).
+  let wheelFocus = null;
   board.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
-    const n = hit && hit.closest('.el');
-    if ((e.ctrlKey || e.metaKey) && n && n.dataset.id === selectedId) {
-      const el = getEl(n.dataset.id); if (el) zoomEl(el, Math.exp(-e.deltaY * 0.004));
-      return;
-    }
-    zoomCameraAt(e.clientX, e.clientY, cam.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+    const z = Math.min(12, Math.max(0.03, cam.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+    // El punto de interés se fija al empezar el gesto (o si mueves el ratón) y se va llevando al centro
+    const now = Date.now(), wf = wheelFocus;
+    if (!wf || now - wf.t > 450 || Math.hypot(e.clientX - wf.cx, e.clientY - wf.cy) > 25) {
+      wheelFocus = { p: toSpaceXY(e.clientX, e.clientY), cx: e.clientX, cy: e.clientY, t: now };
+    } else wf.t = now;
+    const f = wheelFocus.p;
+    const dx = (f.x - cam.x) * cam.z, dy = (f.y - cam.y) * cam.z; // distancia al centro, en píxeles del muro
+    const k = z > cam.z ? 0.8 : 1; // al acercar, cada paso lo trae un 20 % más al centro
+    setCamera({ x: f.x - (dx * k) / z, y: f.y - (dy * k) / z, z });
   }, { passive: false });
 
   board.addEventListener('dblclick', (e) => {
@@ -926,8 +935,8 @@
       if (el.parent) tb.append(tbBtn('unlink', 'Soltar de la foto (dejará de moverse con ella)', () => reparent(getEl(id), true), { label: 'Soltar' }));
     } else {
       tb.append(
-        tbBtn('minus', 'Más pequeña (Ctrl + rueda)', () => zoomEl(getEl(id), 1 / 1.2)),
-        tbBtn('plus', 'Más grande (Ctrl + rueda)', () => zoomEl(getEl(id), 1.2)),
+        tbBtn('minus', 'Foto más pequeña', () => zoomEl(getEl(id), 1 / 1.2)),
+        tbBtn('plus', 'Foto más grande', () => zoomEl(getEl(id), 1.2)),
         tbBtn(prevGeom.has(id) ? 'shrink' : 'expand', prevGeom.has(id) ? 'Volver al tamaño anterior' : 'Ampliar a toda la pantalla', () => toggleMax(getEl(id)), { label: prevGeom.has(id) ? 'Reducir' : 'Ampliar', on: prevGeom.has(id) }),
         tbSep());
       if (el.kind === 'image') tb.append(tbBtn('edit', 'Editar foto', () => openEditor(id), { label: 'Editar' }));

@@ -114,7 +114,9 @@ function broadcast() {
 }
 
 app.use(express.json({ limit: '200kb' }));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], index: false }));
+// Las páginas y scripts siempre se revalidan: tras un despliegue nadie se queda con una versión vieja
+const noCache = (res) => res.setHeader('Cache-Control', 'no-cache');
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], index: false, setHeaders: noCache }));
 
 // Los archivos subidos se sirven aislados: nunca pueden ejecutar código en esta web.
 app.use('/files', express.static(UPLOAD_DIR, {
@@ -131,9 +133,9 @@ app.use('/files', express.static(UPLOAD_DIR, {
   },
 }));
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'upload.html')));
-app.get('/panel', (req, res) => res.sendFile(path.join(__dirname, 'public', 'panel.html')));
-app.get('/pantalla', (req, res) => res.sendFile(path.join(__dirname, 'public', 'panel.html')));
+app.get('/', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'upload.html')); });
+app.get('/panel', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'panel.html')); });
+app.get('/pantalla', (req, res) => { noCache(res); res.sendFile(path.join(__dirname, 'public', 'panel.html')); });
 
 function lanIp() {
   for (const list of Object.values(os.networkInterfaces())) {

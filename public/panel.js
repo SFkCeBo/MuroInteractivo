@@ -769,7 +769,11 @@
   let wheelFocus = null;
   board.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const z = Math.min(12, Math.max(0.03, cam.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+    // Firefox mide la rueda en líneas (deltaMode 1) o páginas (2); Chrome y Safari en píxeles. Lo igualamos.
+    let wd = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1);
+    wd = Math.max(-250, Math.min(250, wd)); // evita saltos enormes con ratones «rápidos»
+    if (!wd) return;
+    const z = Math.min(12, Math.max(0.03, cam.z * Math.exp(-wd * (e.ctrlKey ? 0.01 : 0.0015))));
     // El punto de interés se fija al empezar el gesto (o si mueves el ratón) y se va llevando al centro
     const now = Date.now(), wf = wheelFocus;
     if (!wf || now - wf.t > 450 || Math.hypot(e.clientX - wf.cx, e.clientY - wf.cy) > 25) {

@@ -67,6 +67,10 @@ PUBLIC_URL=https://algo.trycloudflare.com ADMIN_PIN=2468 npm start
 - **Cuadrícula / Collage** ordenan todo de golpe. *Subidas* abre o cierra la recepción.
 - Atajos: Supr borra, flechas mueven (Mayús = más), rueda = zoom del muro, Mayús + esquina cambia el tamaño sin mantener la proporción, Mayús al girar ajusta de 15 en 15°.
 
+## Descargar las fotos
+
+En el panel, el botón **Descargar todo** baja un ZIP con todos los archivos subidos (numerados por orden de llegada y con el nombre de quien los subió), la carpeta `originales/` con la versión sin editar de las fotos que editaste y `mensajes.csv` (se abre en Excel) con autor, mensaje, hora, estado y los textos que pusiste encima. En el visor de cada foto hay también un botón **Descargar** para bajar solo esa.
+
 ## Datos y límites
 
 - Todo se guarda en `data/` (`state.json` + `uploads/`). Si reinicias, el panel sigue igual. Para empezar de cero: botón de papelera o borra `data/`.

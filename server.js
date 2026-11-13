@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
+const archiver = require('archiver');
 
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -279,6 +280,61 @@ const editUpload = multer({
   storage, limits: { fileSize: 40 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => cb(null, /^image\/(jpeg|png|webp)$/.test(file.mimetype)),
 });
+// ---------- Descarga de todo lo subido (ZIP) ----------
+// El panel pide un enlace de un solo uso (con el PIN en una cabecera) y el navegador lo descarga.
+const dlTokens = new Map();
+app.post('/api/download-token', (req, res) => {
+  if (!isAdmin(req.get('x-admin-pin'))) return res.status(401).json({ error: 'PIN incorrecto' });
+  const t = crypto.randomBytes(16).toString('hex');
+  dlTokens.set(t, Date.now() + 2 * 60 * 1000);
+  res.json({ url: '/api/download.zip?t=' + t });
+});
+
+const safeName = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+const csvCell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+const stamp = (t) => new Date(t).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+
+app.get('/api/download.zip', (req, res) => {
+  const exp = dlTokens.get(req.query.t);
+  dlTokens.delete(req.query.t);
+  if (!exp || exp < Date.now()) return res.status(401).send('Enlace caducado. Vuelve a pulsar «Descargar todo» en el panel.');
+
+  const files = state.elements.filter((e) => e.file).sort((a, b) => a.createdAt - b.createdAt);
+  const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' }); // AAAA-MM-DD en hora de España
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="muro-interactivo-${day}.zip"`);
+  res.setHeader('Cache-Control', 'no-store');
+
+  const zip = archiver('zip', { store: true }); // las fotos ya van comprimidas: más rápido sin recomprimir
+  zip.on('warning', (e) => console.error('zip', e));
+  zip.on('error', (e) => { console.error('zip', e); res.destroy(e); });
+  zip.pipe(res);
+
+  const rows = [['n', 'archivo', 'autor', 'mensaje', 'hora', 'estado', 'editada', 'textos encima'].map(csvCell).join(';')];
+  files.forEach((e, i) => {
+    const n = String(i + 1).padStart(3, '0');
+    const ext = path.extname(e.file.url) || path.extname(e.file.name) || '';
+    const base = [n, safeName(e.author) || 'anonimo', safeName(path.parse(e.file.name).name)].filter(Boolean).join('_');
+    const fname = base + ext;
+    const edited = e.file.url !== e.file.originalUrl;
+    const cur = path.join(UPLOAD_DIR, path.basename(e.file.url));
+    if (fs.existsSync(cur)) zip.file(cur, { name: fname, date: new Date(e.createdAt) });
+    if (edited) {
+      const orig = path.join(UPLOAD_DIR, path.basename(e.file.originalUrl));
+      if (fs.existsSync(orig)) zip.file(orig, { name: 'originales/' + base + path.extname(e.file.originalUrl), date: new Date(e.createdAt) });
+    }
+    const estado = e.status === 'pending' ? 'pendiente' : e.hidden ? 'oculta' : 'visible';
+    const textos = state.elements.filter((t) => t.parent === e.id).map((t) => t.text).join(' | ');
+    rows.push([n, fname, e.author, e.message, stamp(e.createdAt), estado, edited ? 'sí' : 'no', textos].map(csvCell).join(';'));
+  });
+  // Excel abre bien el CSV en español con BOM y punto y coma
+  zip.append('\ufeff' + rows.join('\r\n') + '\r\n', { name: 'mensajes.csv' });
+  const loose = state.elements.filter((t) => t.kind === 'text' && !t.parent).map((t) => '- ' + t.text);
+  if (loose.length) zip.append('Textos del muro\n\n' + loose.join('\n') + '\n', { name: 'textos-del-muro.txt' });
+  zip.finalize();
+});
+
 app.post('/api/edit/:id', (req, res) => {
   if (!isAdmin(req.get('x-admin-pin'))) return res.status(401).json({ error: 'PIN incorrecto' });
   editUpload.single('image')(req, res, (err) => {

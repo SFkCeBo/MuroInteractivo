@@ -50,6 +50,7 @@
     alignC: P('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
     alignR: P('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
     minus: P('<path d="M5 12h14"/>'),
+    download: P('<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>'),
     focus: P('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>'),
     fit: P('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/>'),
     shrink: P('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'),
@@ -495,6 +496,19 @@
   $('#spotStop').onclick = () => setting({ spotlight: '' });
   const isNarrow = () => matchMedia('(max-width: 900px)').matches;
   $('#sideBtn').onclick = () => { document.body.classList.toggle(isNarrow() ? 'side-open' : 'side-closed'); fit(); };
+  $('#dlBtn').onclick = async () => {
+    const n = state.elements.filter((e) => e.file).length;
+    if (!n) return toast('Todavía no se ha subido ningún archivo');
+    const btn = $('#dlBtn'); btn.disabled = true;
+    try {
+      const r = await fetch('/api/download-token', { method: 'POST', headers: { 'x-admin-pin': pin } });
+      if (!r.ok) throw new Error();
+      const { url } = await r.json();
+      const a = h('a', { href: url, download: '' }); document.body.append(a); a.click(); a.remove();
+      toast(`Descargando ${n} archivo${n === 1 ? '' : 's'} en un ZIP…`);
+    } catch { toast('No se pudo preparar la descarga. Inténtalo de nuevo.'); }
+    setTimeout(() => { btn.disabled = false; }, 2500);
+  };
   $('#clearBtn').onclick = () => {
     if (!state.elements.length) return;
     if (confirm('¿Vaciar el panel? Se borrarán TODOS los archivos y textos. No se puede deshacer.')) { socket.emit('clear-all'); selectedId = null; }
@@ -1033,6 +1047,8 @@
     $('#lbCap').textContent = [el.message, el.author ? '— ' + el.author : ''].filter(Boolean).join('  ') || el.file.name;
     $('#lbCount').textContent = `${LB.i + 1} / ${LB.list.length}`;
     $('#lbEdit').hidden = el.kind !== 'image';
+    $('#lbDl').href = el.file.url;
+    $('#lbDl').setAttribute('download', (el.author ? el.author + ' - ' : '') + el.file.name);
     $('#lbProject').hidden = el.status !== 'live';
     $('#lbProject').classList.toggle('on', LB.project);
     $('#lbProject').lastChild.textContent = LB.project ? 'En /pantalla' : 'Mostrar en /pantalla';

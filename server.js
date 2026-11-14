@@ -12,7 +12,24 @@ const { Server } = require('socket.io');
 const archiver = require('archiver');
 
 const PORT = Number(process.env.PORT) || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Carpeta de datos: DATA_DIR (p. ej. un disco persistente) o ./data.
+// Si DATA_DIR no se puede usar (p. ej. se quitó el disco pero quedó la variable), se avisa y se usa ./data
+// en lugar de cerrar la app.
+function pickDataDir() {
+  const fallback = path.join(__dirname, 'data');
+  const wanted = process.env.DATA_DIR;
+  for (const dir of wanted ? [wanted, fallback] : [fallback]) {
+    try {
+      fs.mkdirSync(path.join(dir, 'uploads'), { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      if (dir !== (wanted || fallback)) console.warn(`AVISO: no se puede escribir en DATA_DIR=${wanted}; uso ${dir}. Quita la variable DATA_DIR si ya no hay disco.`);
+      return dir;
+    } catch (e) {
+      if (dir === fallback) throw e;
+    }
+  }
+}
+const DATA_DIR = pickDataDir();
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
@@ -22,7 +39,6 @@ const ADMIN_PIN = String(process.env.ADMIN_PIN || crypto.randomInt(1000, 10000))
 const BOARD_W = 1920;
 const BOARD_H = 1080;
 
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ---------- Tipos de archivo permitidos ----------
 const ALLOWED = {

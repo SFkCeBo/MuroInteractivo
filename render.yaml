@@ -1,23 +1,23 @@
 # Despliegue en Render: https://render.com/deploy
-# Configuración usada en el evento: plan Starter (no se duerme) + disco persistente (las fotos sobreviven a reinicios).
-# Para volver al plan gratuito: plan: free, quita el bloque disk y la variable DATA_DIR (y guarda antes las fotos).
+# Plan gratuito: se duerme tras 15 min sin uso y las fotos se borran al reiniciar.
+# Para un evento: plan: starter y añade un disco (descomenta el bloque disk y DATA_DIR).
 services:
   - type: web
     name: muro-interactivo
     runtime: node
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/info
-    disk:
-      name: datos
-      mountPath: /var/data
-      sizeGB: 1
+    # disk:
+    #   name: datos
+    #   mountPath: /var/data
+    #   sizeGB: 1
     envVars:
       - key: ADMIN_PIN
         sync: false        # Render te lo pide al desplegar
-      - key: DATA_DIR
-        value: /var/data
       - key: NODE_VERSION
         value: "22"
+      # - key: DATA_DIR
+      #   value: /var/data

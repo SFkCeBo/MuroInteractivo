@@ -33,3 +33,10 @@ Para subir archivos de prueba sin móvil:
 curl -F files=@foto.jpg -F 'dims=[{"w":1600,"h":1200}]' -F author=Ana -F 'message=Hola' localhost:3100/api/upload
 ```
 Después de cambiar algo, compruébalo en el navegador en escritorio y en un tamaño de móvil (390×844), en `/panel` y `/pantalla`. Borra `data/` para empezar de cero.
+
+## Flujo de desarrollo (ECC)
+Este repo usa [ECC](https://github.com/affaan-m/ECC). Reglas en `.claude/rules/ecc/` (common + typescript + web, copiadas de ECC @ d2ef268). Gestor de paquetes: `npm` (`.claude/package-manager.json`).
+- Tarea nueva: `/ecc:plan "<tarea>"` → skill `tdd-workflow` → `/ecc:code-review` → `/ecc:security-scan` antes de producción.
+- Build roto: `/ecc:build-fix`.
+- Si una regla de ECC choca con lo que dice este archivo, manda este archivo.
+- Para actualizar las reglas: `git -C ~/ecc pull` y volver a copiar las carpetas enteras (no aplanar).
